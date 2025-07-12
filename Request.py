@@ -1,8 +1,6 @@
 #print(findrule("st"))
 from time import sleep
 import requests,json
-
-from utils.AuthV3Util import addAuthParams
 from openai import OpenAI
 import concurrent.futures
 
@@ -17,24 +15,6 @@ def findrule(game):
         if tpoint!=-1:
             tpoint=x.find(":")
             return x[tpoint+1:]
-    return ""
-def request_youdao(strr,game):
-    #print(strr)
-    data = {'q':strr, 'from':"en", 'to':"zh-CHS"}   
-    addAuthParams(APP_KEY, APP_SECRET, data)
-    header = {'Content-Type': 'application/x-www-form-urlencoded'}
-    res = doCall('https://openapi.youdao.com/api', header, data, 'post')
-    if res and res.content:
-        chn=json.loads(res.content.decode())
-        print(chn["translation"])
-        sleep(1)
-        return chn["translation"][0]
-    return ""
-def doCall(url, header, params, method):
-    if 'get' == method:
-        return requests.get(url, params)
-    elif 'post' == method:
-        return requests.post(url, params, header)
     return ""
 
 def request_deepseek(tran, game,al_cnt,all_len):

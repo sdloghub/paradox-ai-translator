@@ -1,4 +1,11 @@
-import os,sys
+import os,sys,re
+import Request
+class Paradox_data:
+    def __init__(self,key_w,word,vis):
+        self.key_w=key_w
+        self.word=word
+        self.vis=vis
+        
 def check(str):
     if str.find(".yml")==-1: 
         return 1
@@ -6,6 +13,9 @@ def check(str):
         return 2
     else:
         return 0
+def chinese_in(txt):
+    pattern = re.compile(r'[\u4e00-\u9fff]')
+    return bool(pattern.search(txt))
 def clean(dir_name):
     dir=os.listdir(dir_name)
     for name in dir:
@@ -62,7 +72,40 @@ def outputs(local_path,dic):
             fi.write(strin)
             cnt+=1
             continue
-def part(local_path,rel,chn):
-    fi=open("./already/"+local_path,"a+",encoding="utf-8")
+def writein(local_path,rel,chn,mde):
+    fi=open("./already/"+local_path,mde,encoding="utf-8")
     fi.write(rel+"\""+chn.replace("\n","\\n")+"\"\n")
     fi.close()
+def translate_para(local_path,mde,model):
+    tran={}
+    tp=extract("./localisation/"+local_path)
+    for ct in tp:
+        tran[ct[0]]=Paradox_data(ct[0],ct[1],0)
+    ap=extract("./already/"+model+"/"+local_path)
+    for ct in ap:
+        if ct[1]!="" '''and chinese_in(ct[1])==True''':
+            tran[ct[0]]=Paradox_data(ct[0],ct[1],1)
+    cnt=0
+    # 收集所有需要翻译的文本
+    texts=[]
+    pdata=[]
+    for tct in tran:
+        if (tran[tct].word == "" or chinese_in(tran[tct].word)==True) and tran[tct].vis == 0:
+            tran[tct].vis = 1
+        if tran[tct].vis == 0:
+            pdata.append(Paradox_data(tran[tct].key_w,tran[tct].word,1))
+            texts.append(tran[tct].word)
+        else:
+            cnt+=1
+    if texts!=[]:
+        seg_length=50
+        for i in range(0,len(texts),seg_length):
+            seg_texts = texts[i:min(len(texts),i+seg_length)]
+            seg_pdata = pdata[i:min(len(pdata),i+seg_length)]
+            seg_texts = Request.request_deepseek(seg_texts, mde, cnt ,len(tran))
+            for j in range(len(seg_texts)):
+                seg_pdata[j].word=seg_texts[j]
+                tran[seg_pdata[j].key_w] = seg_pdata[j]
+                writein(model+"/"+local_path, seg_pdata[j].key_w, seg_pdata[j].word,"a")
+            cnt+=seg_length
+    outputs(local_path,tran)
