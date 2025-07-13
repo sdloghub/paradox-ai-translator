@@ -20,7 +20,7 @@ def translate(dir_name,mde,model):
                     os.mkdir("./already/"+model+"/"+dir_name+eng)
                 translate(dir_name+eng+"/",mde,model)
                 continue
-            elif Paradox.check(eng)==2:
+            elif Paradox.check(eng)==2 and mde!="eu4":
                 chn=eng.replace("l_english","l_simp_chinese")
                 os.rename("./localisation/"+dir_name+eng,"./localisation/"+dir_name+chn)
                 eng=chn

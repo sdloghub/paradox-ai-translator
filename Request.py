@@ -38,20 +38,28 @@ def request_deepseek(tran, game,al_cnt,all_len):
         return response.choices[0].message.content
 
     # 使用线程池并行处理
-    results = []
+    results = [None]*len(tran)
     cnt=0
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-        future_to_str = {executor.submit(_translate_, s): s for s in tran}
-        for future in concurrent.futures.as_completed(future_to_str):
+        future_to_index = {}
+        for i, s in enumerate(tran):
+            future_to_str = executor.submit(_translate_, s)
+            future_to_index[future_to_str] = i
+        
+        # 按完成顺序收集结果
+        for future in concurrent.futures.as_completed(future_to_index):
+            index = future_to_index[future]
             try:
                 cnt+=1
                 result = future.result()
-                results.append(result)
+                results[index] = result  # 按原始索引位置存储结果
                 print(f"{al_cnt+cnt}/{all_len}")
             except Exception as e:
                 print(f"翻译请求出错: {e}")
-                results.append("")  # 出错时返回空字符串
-
+                results[index] = tran[index] 
+        for i in range(len(results)):
+            if results[i] is None:
+                results[i] = tran[i]
     # 如果输入是单个字符串，则返回单个结果；否则返回列表
     return results
 # 网易有道智云翻译服务api调用demo
