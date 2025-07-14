@@ -217,9 +217,9 @@ def outputs(local_path,dic,mde):
         if find_length!=-1:
             ori=strin[0:find_length]
             if mde=="eu4":
-                strin=ori+" \""+special_escape(dic[ori].word.replace("\n","\\n")+"\"\n",True,True)
+                strin=" "+ori+"\""+special_escape(dic[ori].word.replace("\n","\\n")+"\"\n",True,True)
             else:
-                strin=ori+" \""+dic[ori].word.replace("\n","\\n")+"\"\n"
+                strin=" "+ori+"\""+dic[ori].word.replace("\n","\\n")+"\"\n"
             fi.write(strin)
             cnt+=1
             continue
@@ -234,14 +234,14 @@ def translate_para(local_path,mde,model):
         tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=0)
     ap=extract("./already/"+model+"/"+local_path,mde)
     for ct in ap:
-        if ct[1]!="" or chinese_in(ct[1])==True:
+        if (ct[1].replace(" ","")!="" or chinese_in(ct[1])==True):
             tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=1)
     cnt=0
     # 收集所有需要翻译的文本
     texts=[]
     pdata=[]
     for tct in tran:
-        if (tran[tct].word == "" or chinese_in(tran[tct].word)==True) and tran[tct].vis == 0:
+        if ((tran[tct].word).replace(" ","") == "" or chinese_in(tran[tct].word)==True) and tran[tct].vis == 0:
             tran[tct].vis = 1
         if tran[tct].vis == 0:
             pdata.append(Paradox_data(key_w=tran[tct].key_w,word=tran[tct].word,vis=1))
