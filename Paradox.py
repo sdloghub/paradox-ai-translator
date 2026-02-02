@@ -1,5 +1,10 @@
-import os,sys,re
-import Request
+import os
+import re
+from pathlib import Path
+from typing import Dict, List
+
+import request
+
 def cp1252_utf8(char,type):
     # CP1252 到 UTF-8 的映射表
     escape_map = {
@@ -156,93 +161,103 @@ def check(str):
         return 2
     else:
         return 0
-def chinese_in(txt):
-    pattern = re.compile(r'[\u4e00-\u9fff]')
-    if bool(pattern.search(txt)):
-        return True
-    else:
-        return txt.count("$") or txt.count("[") or txt.count("]") or txt.count("£")
 def clean(dir_name):
-    dir=os.listdir(dir_name)
-    for name in dir:
-        if check(name)==1:
-            clean(dir_name+name+"/")
+    """
+    递归删除目录，调用方可能传入不存在的路径，因此先校验再处理。
+    """
+    if not os.path.isdir(dir_name):
+        return
+    for name in os.listdir(dir_name):
+        full_path = os.path.join(dir_name, name)
+        if os.path.isdir(full_path):
+            clean(full_path)
         else:
-            os.remove(dir_name+name)
+            os.remove(full_path)
     os.rmdir(dir_name)
-def extract(str,mde):
-    fa=open(str,"a+",encoding="utf-8")
-    fa.close()
-    fo=open(str,"r+",encoding="utf-8")
-    local_list=fo.readlines()
-    fo.close()
-    cnt=0
+def extract(path,mde):
+    """
+    流式解析 localisation/already 文件，避免一次性读入超大文件。
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).touch(exist_ok=True)
     pdata=[]
-    while cnt<len(local_list):
-        strin=local_list[cnt].lstrip()
-        find_length=strin.find("\"")
-        skipp=(strin.lstrip()).find("#")
-        if (skipp<=3 and skipp!=-1) or find_length==-1:
-            cnt+=1
-            continue
-        start_l=find_length+1
-        end_l=len(strin)-2
-        if skipp!=-1:
-            end_l=skipp-2
-        if find_length!=-1:
-            if mde=="eu4":
-                pdata.append((strin[0:find_length],special_unescape(strin[start_l:end_l],True,True),mde))
-            else:
-                pdata.append((strin[0:find_length],strin[start_l:end_l],mde))
-        cnt+=1
+    try:
+        with open(path,"r",encoding="utf-8") as fo:
+            for raw_line in fo:
+                #print(raw_line)
+                strin=raw_line.lstrip()
+                find_length=strin.find("\"")
+                skipp=(strin.lstrip()).find("#")
+                # skipp:如果#在5个字符内，则跳过
+                if (skipp<=5 and skipp!=-1) or find_length==-1:
+                    #print(raw_line)
+                    continue
+                start_l=find_length+1
+                end_l=len(strin)-2
+                if find_length!=-1:
+                    # 确保 end_l 有效且大于 start_l，避免索引错误
+                    if end_l <= start_l or end_l < 0 or end_l >= len(strin):
+                        continue
+                    if mde=="eu4":
+                        original_text = special_unescape(strin[start_l:end_l],True,True)
+                        #print(original_text)
+                        pdata.append((strin[0:find_length],original_text))
+                    else:
+                        original_text = strin[start_l:end_l]
+                        #print(original_text)
+                        pdata.append((strin[0:find_length],original_text))
+    except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
+        print(f"读取文件 {path} 时出错: {e}")
+        return []
     return pdata
-def outputs(local_path,dic,mde):
-    fo=open("./localisation/"+local_path,"r",encoding="utf-8")
-    local_list=fo.readlines()
-    fo.close()
-    fi=open("./chn/"+local_path,"w",encoding="utf-8")
-    cnt=0
-    ori=""
-    rep=""
-    while cnt<len(local_list):
-        strin=local_list[cnt].lstrip()
-        find_length=strin.find("\"")
-        skipp=(strin.lstrip()).find("#")
-        if (skipp<=3 and skipp!=-1) or find_length==-1 or chinese_in(strin):
-            if strin.find("l_english")!=-1 and mde!="eu4":
-                strin=strin.replace("l_english:","l_simp_chinese:")
-            fi.write(strin)
-            cnt+=1
-            continue
-        if find_length!=-1:
+def outputs(local_path: str, dic: Dict[str, Paradox_data], mde: str):
+    src_path = "./localisation/"+local_path
+    dst_path = "./chn/"+local_path
+    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+    with open(src_path,"r",encoding="utf-8") as fo, open(dst_path,"w",encoding="utf-8") as fi:
+        for raw_line in fo:
+            strin=raw_line.lstrip()
+            find_length=strin.find("\"")
+            skipp=(strin.lstrip()).find("#")
+            if (skipp<=5 and skipp!=-1) or find_length==-1:
+                write_line = raw_line
+                if "l_english" in raw_line and mde!="eu4":
+                    write_line=raw_line.replace("l_english:","l_simp_chinese:")
+                fi.write(write_line)
+                continue
             ori=strin[0:find_length]
+            pdata = dic.get(ori)
+            if pdata is None:
+                # 字典缺失时保留原文，避免 KeyError 直接中断
+                fi.write(raw_line)
+                continue
             if mde=="eu4":
-                strin=" "+ori+"\""+special_escape(dic[ori].word.replace("\n","\\n")+"\"\n",True,True)
+                new_line=" "+ori+"\""+special_escape(pdata.word.replace("\n","\\n")+"\"\n",True,True)
             else:
-                strin=" "+ori+"\""+dic[ori].word.replace("\n","\\n")+"\"\n"
-            fi.write(strin)
-            cnt+=1
-            continue
-def writein(local_path,rel,chn,mde):
-    fi=open("./already/"+local_path,mde,encoding="utf-8")
-    fi.write(rel+"\""+chn.replace("\n","\\n")+"\"\n")
-    fi.close()
-def translate_para(local_path,mde,model):
-    tran={}
+                new_line=" "+ori+"\""+pdata.word.replace("\n","\\n")+"\"\n"
+            fi.write(new_line)
+def writein(local_path,rel,chn,mode="a"):
+    full_path = "./already/"+local_path
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path,mode,encoding="utf-8") as fi:
+        fi.write(rel+"\""+chn.replace("\n","\\n")+"\"\n")
+def translate_para(local_path,mde):
+    tran: Dict[str, Paradox_data]={}
     tp=extract("./localisation/"+local_path,mde)
     for ct in tp:
         tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=0)
-    ap=extract("./already/"+model+"/"+local_path,mde)
+    already_path = os.path.join("./already", local_path)
+    os.makedirs(os.path.dirname(already_path), exist_ok=True)
+    with open(already_path, "a", encoding="utf-8"):
+        pass
+    ap=extract(already_path,mde)
     for ct in ap:
-        if (ct[1].replace(" ","")!="" or chinese_in(ct[1])==True):
-            tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=1)
+        tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=1)
     cnt=0
     # 收集所有需要翻译的文本
-    texts=[]
-    pdata=[]
+    texts: List[str]=[]
+    pdata: List[Paradox_data]=[]
     for tct in tran:
-        if ((tran[tct].word).replace(" ","") == "" or chinese_in(tran[tct].word)==True) and tran[tct].vis == 0:
-            tran[tct].vis = 1
         if tran[tct].vis == 0:
             pdata.append(Paradox_data(key_w=tran[tct].key_w,word=tran[tct].word,vis=1))
             texts.append(tran[tct].word)
@@ -253,22 +268,10 @@ def translate_para(local_path,mde,model):
         for i in range(0,len(texts),seg_length):
             seg_texts = texts[i:min(len(texts),i+seg_length)]
             seg_pdata = pdata[i:min(len(pdata),i+seg_length)]
-            seg_texts = Request.request_deepseek(seg_texts, mde, cnt ,len(tran))
+            seg_texts = request.request_deepseek_batch(seg_texts, mde, cnt ,len(tran))
             for j in range(len(seg_texts)):
                 seg_pdata[j].word=seg_texts[j]
                 tran[seg_pdata[j].key_w] = seg_pdata[j]
-                writein(model+"/"+local_path, seg_pdata[j].key_w, seg_pdata[j].word,"a")
-            cnt+=seg_length
+                writein("/"+local_path, seg_pdata[j].key_w, seg_pdata[j].word,"a")
+            cnt+=len(seg_pdata)
     outputs(local_path,tran,mde)
-
-
-
-# 测试代码
-'''
-original = "你好"
-escaped = special_escape(original, True, True)
-unescaped = special_unescape(escaped, True, True)
-print(f"原始: {original}")
-print(f"转义: {escaped}")
-print(f"还原: {unescaped}")
-'''
