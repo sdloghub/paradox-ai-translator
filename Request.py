@@ -3,10 +3,13 @@ import json
 from pathlib import Path
 import concurrent.futures
 
-from openai import OpenAI
+from openai import OpenAI, APIConnectionError, APITimeoutError
+import logging
+import time
+import os
+import re
+from collections import Counter
 
-APP_KEY = '4bcdbd21d0636955'
-APP_SECRET = '6FibaBh0UcYkSwBKyWtFA11pn6qqvsKK' 
 
 _RULES_CACHE = None
 
@@ -16,101 +19,88 @@ def findrule(game):
     """
     global _RULES_CACHE
     if _RULES_CACHE is None:
-        rules_path = Path("rules.json")
+        rules_path = Path(__file__).resolve().parent / "rules.json"
         with rules_path.open("r", encoding="utf-8") as fi:
             _RULES_CACHE = json.load(fi)
     return _RULES_CACHE[game]
 #print(findrule("st"))
-def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=15, pool_size=30):
-    """
-    支持批量合并翻译：将多条文本合并成一批进行翻译，然后拆分回原格式
-    :param tran: 字符串列表
-    :param game: 游戏名称，用于获取规则
-    :param al_cnt: 已翻译数量
-    :param all_len: 总数量
-    :param batch_size: 每批合并的文本数量，默认5
-    :param pool_size: 线程池最大并发数，默认20
-    :return: 翻译结果列表
-    client = OpenAI(api_key="sk-jkG33jX6jy8wtqfi2yAjC41vZ1ZgDjffN6Mqjo5HLRp9Gt9j", base_url="https://yinli.one/v1")
-    """
-    client = OpenAI(api_key="sk-e85d7bea05cd45438fe258f807ec79d8", base_url="https://api.deepseek.com")
-    
-    # 分隔符，用于合并和拆分文本
-    SEPARATOR = "\n---SEPARATOR---\n"
-    
-    def _translate_batch_(batch_text):
-        """翻译一批合并的文本"""
-        messages = [
-            {"role": "system", "content": findrule(game)},
-            {"role": "user", "content": batch_text}
-        ]
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages
-        )
-        return response.choices[0].message.content
-    
-    # 将文本列表按 batch_size 分组并合并
-    batches = []
-    batch_indices = []  # 记录每批对应的原始索引范围
-    
-    for i in range(0, len(tran), batch_size):
-        batch = tran[i:i+batch_size]
-        batch_text = SEPARATOR.join(batch)
-        batches.append(batch_text)
-        batch_indices.append((i, min(i+batch_size, len(tran))))
-    
-    # 使用线程池并行处理批次
-    results = [None] * len(tran)
-    cnt = 0
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=pool_size) as executor:
-        future_to_batch_idx = {}
-        for batch_idx, batch_text in enumerate(batches):
-            future = executor.submit(_translate_batch_, batch_text)
-            future_to_batch_idx[future] = batch_idx
-        
-        # 按完成顺序收集结果并拆分
-        for future in concurrent.futures.as_completed(future_to_batch_idx):
-            batch_idx = future_to_batch_idx[future]
-            start_idx, end_idx = batch_indices[batch_idx]
-            
+# Match script variables, game icons, colour/format tokens and literal escapes.
+TOKENS = re.compile(r'\$[^$\r\n]*\$|\[[^\]\r\n]*\]|£[^£\s]+£?|@[A-Za-z0-9_]+!?|§.|\#(?:[A-Za-z][A-Za-z0-9_]*|!)|\\(?:[nrt"\\])')
+
+def valid_translation(original, translated):
+    return (isinstance(translated, str)
+            and (bool(translated.strip()) or not original.strip())
+            and "---SEPARATOR---" not in translated
+            and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(translated)))
+
+def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40):
+    """返回与输入顺序一致的 {text, success, error}；失败项保留原文。"""
+    if batch_size < 1 or pool_size < 1:
+        raise ValueError("batch_size 和 pool_size 必须大于零")
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("请设置 DEEPSEEK_API_KEY 环境变量")
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", max_retries=0)
+    rule = findrule(game)
+    separator = "\n---SEPARATOR---\n"
+
+    def failed(original, error):
+        return {"text": original, "success": False, "error": error}
+
+    def translate_text(text):
+        # SDK 重试关闭，由这里控制：首次请求加最多三次临时错误重试。
+        for attempt in range(4):
             try:
-                batch_result = future.result()
-                # 按分隔符拆分翻译结果
-                translated_parts = batch_result.split(SEPARATOR)
-                
-                # 如果拆分后的数量不匹配，尝试其他方式处理
-                if len(translated_parts) != (end_idx - start_idx):
-                    # 如果拆分失败，尝试按行拆分或使用原文本
-                    print(f"警告：批次 {batch_idx} 拆分结果数量不匹配，使用备用方案")
-                    # 尝试按更简单的分隔符拆分
-                    if "\n---\n" in batch_result:
-                        translated_parts = batch_result.split("\n---\n")
-                    else:
-                        # 如果还是不行，将整个结果作为第一个，其余使用原文本
-                        translated_parts = [batch_result] + tran[start_idx+1:end_idx]
-                
-                # 将拆分后的结果填充到对应位置
-                for j, part in enumerate(translated_parts):
-                    if start_idx + j < end_idx:
-                        results[start_idx + j] = part.strip()
-                        cnt += 1
-                        print(f"{al_cnt+cnt}/{all_len}")
-                
-            except Exception as e:
-                print(f"翻译批次 {batch_idx} 出错: {e}")
-                # 出错时使用原文本
-                for j in range(start_idx, end_idx):
-                    results[j] = tran[j]
-                    cnt += 1
-                    print(f"{al_cnt+cnt}/{all_len}")
-    
-    # 填充任何未处理的项（理论上不应该发生）
-    for i in range(len(results)):
-        if results[i] is None:
-            results[i] = tran[i]
-    
+                response = client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[{"role": "system", "content": rule},
+                              {"role": "user", "content": text}],
+                )
+                content = response.choices[0].message.content
+                if not isinstance(content, str) or not content.strip():
+                    raise ValueError("模型返回空文本")
+                return content
+            except Exception as error:
+                status = getattr(error, "status_code", None)
+                transient = isinstance(error, (APIConnectionError, APITimeoutError)) or status in (408, 409, 429) or (isinstance(status, int) and status >= 500)
+                if not transient or attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+
+    def translate_batch(batch):
+        try:
+            content = translate_text(separator.join(batch))
+        except Exception as error:
+            logging.warning("翻译请求失败，条目保留原文且不缓存 (%s)", type(error).__name__)
+            return [failed(text, type(error).__name__) for text in batch]
+        parts = content.split(separator)
+        if len(parts) == len(batch) and all(valid_translation(original, part.strip()) for part, original in zip(parts, batch)):
+            return [{"text": part.strip(), "success": True, "error": None} for part in parts]
+        logging.warning("批次分隔符数量或内容不正确，改为逐条翻译")
+        results = []
+        for original in batch:
+            try:
+                for validation_attempt in range(3):
+                    text = translate_text(original).strip()
+                    if valid_translation(original, text):
+                        break
+                else:
+                    raise ValueError("变量或格式代码校验失败")
+                results.append({"text": text, "success": True, "error": None})
+            except Exception as error:
+                logging.warning("逐条翻译失败，保留原文且不缓存 (%s)", type(error).__name__)
+                results.append(failed(original, type(error).__name__))
+        return results
+
+    results = [None] * len(tran)
+    completed = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=pool_size) as executor:
+        futures = {executor.submit(translate_batch, tran[i:i + batch_size]): i
+                   for i in range(0, len(tran), batch_size)}
+        for future in concurrent.futures.as_completed(futures):
+            start = futures[future]
+            batch_results = future.result()
+            results[start:start + len(batch_results)] = batch_results
+            completed += len(batch_results)
+            print(f"已处理 {al_cnt + completed}/{all_len}")
     return results
-# 网易有道智云翻译服务api调用demo
-# api接口: https://openapi.youdao.com/api

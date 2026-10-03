@@ -148,130 +148,110 @@ def special_unescape(s, to_utf8, new_version):
     
     return ''.join(result)
 
+ROOT = Path(__file__).resolve().parent
+
 class Paradox_data:
-    def __init__(self,key_w,word,vis):
-        self.key_w=key_w
-        self.word=word
-        self.vis=vis
-     
-def check(str):
-    if str.find(".yml")==-1: 
-        return 1
-    elif str.find("l_english.yml")!=-1:
-        return 2
-    else:
-        return 0
-def clean(dir_name):
-    """
-    递归删除目录，调用方可能传入不存在的路径，因此先校验再处理。
-    """
-    if not os.path.isdir(dir_name):
-        return
-    for name in os.listdir(dir_name):
-        full_path = os.path.join(dir_name, name)
-        if os.path.isdir(full_path):
-            clean(full_path)
-        else:
-            os.remove(full_path)
-    os.rmdir(dir_name)
-def extract(path,mde):
-    """
-    流式解析 localisation/already 文件，避免一次性读入超大文件。
-    """
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).touch(exist_ok=True)
-    pdata=[]
+    def __init__(self, key_w, word, vis):
+        self.key_w, self.word, self.vis = key_w, word, vis
+
+# Preserve indentation, key/version, trailing comments and original line endings.
+ENTRY = re.compile(r'^(?P<prefix>\s*[^#\s][^"\r\n]*?:\s*\d*\s*)"(?P<text>(?:\\.|[^"\\])*)"(?P<suffix>[ \t]*(?:#[^\r\n]*)?)(?P<newline>\r?\n)?$')
+
+def parse_line(line):
+    return ENTRY.fullmatch(line)
+
+def source_text(match, game):
+    text = match['text']
+    return special_unescape(text, True, True) if game == 'eu4' else text
+
+def output_name(local_path, game):
+    path = Path(local_path)
+    return path if game == 'eu4' else path.with_name(path.name.replace('l_english', 'l_simp_chinese'))
+
+def extract(path, mde):
+    with Path(path).open(encoding='utf-8-sig', newline='') as source:
+        entries = []
+        for number, line in enumerate(source, 1):
+            match = parse_line(line)
+            if match:
+                entries.append((match['prefix'].lstrip(), source_text(match, mde)))
+            elif not line.lstrip().startswith('#') and ':' in line and '"' in line:
+                raise ValueError(f"无法解析本地化条目：{path}:{number}")
+        return entries
+
+def atomic_write(path, text):
+    import tempfile
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
     try:
-        with open(path,"r",encoding="utf-8") as fo:
-            for raw_line in fo:
-                #print(raw_line)
-                strin=raw_line.lstrip()
-                find_length=strin.find("\"")
-                skipp=(strin.lstrip()).find("#")
-                # skipp:如果#在5个字符内，则跳过
-                if (skipp<=5 and skipp!=-1) or find_length==-1:
-                    #print(raw_line)
-                    continue
-                start_l=find_length+1
-                end_l=len(strin)-2
-                if find_length!=-1:
-                    # 确保 end_l 有效且大于 start_l，避免索引错误
-                    if end_l <= start_l or end_l < 0 or end_l >= len(strin):
-                        continue
-                    if mde=="eu4":
-                        original_text = special_unescape(strin[start_l:end_l],True,True)
-                        #print(original_text)
-                        pdata.append((strin[0:find_length],original_text))
-                    else:
-                        original_text = strin[start_l:end_l]
-                        #print(original_text)
-                        pdata.append((strin[0:find_length],original_text))
-    except (FileNotFoundError, IOError, UnicodeDecodeError) as e:
-        print(f"读取文件 {path} 时出错: {e}")
-        return []
-    return pdata
-def outputs(local_path: str, dic: Dict[str, Paradox_data], mde: str):
-    src_path = "./localisation/"+local_path
-    dst_path = "./chn/"+local_path
-    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-    with open(src_path,"r",encoding="utf-8") as fo, open(dst_path,"w",encoding="utf-8") as fi:
-        for raw_line in fo:
-            strin=raw_line.lstrip()
-            find_length=strin.find("\"")
-            skipp=(strin.lstrip()).find("#")
-            if (skipp<=5 and skipp!=-1) or find_length==-1:
-                write_line = raw_line
-                if "l_english" in raw_line and mde!="eu4":
-                    write_line=raw_line.replace("l_english:","l_simp_chinese:")
-                fi.write(write_line)
-                continue
-            ori=strin[0:find_length]
-            pdata = dic.get(ori)
-            if pdata is None:
-                # 字典缺失时保留原文，避免 KeyError 直接中断
-                fi.write(raw_line)
-                continue
-            if mde=="eu4":
-                new_line=" "+ori+"\""+special_escape(pdata.word.replace("\n","\\n")+"\"\n",True,True)
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', newline='',
+                                         dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(text)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+def outputs(local_path, dic, mde, output_root=None):
+    src = ROOT / 'localisation' / local_path
+    dst = (Path(output_root) if output_root is not None else ROOT / 'chn') / output_name(local_path, mde)
+    lines = []
+    # Read UTF-8 without stripping BOM so it is retained in the output.
+    with src.open(encoding='utf-8', newline='') as source:
+        for line in source:
+            match = parse_line(line)
+            if match and match['prefix'].lstrip() in dic:
+                text = dic[match['prefix'].lstrip()].word.replace('\n', r'\n')
+                if mde == 'eu4':
+                    text = special_escape(text, True, True)
+                # Escape unescaped quotes; existing game escapes remain intact.
+                text = re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', text)
+                line = match['prefix'] + '"' + text + '"' + match['suffix'] + (match['newline'] or '')
+            elif mde != 'eu4' and line.lstrip('\ufeff \t').startswith('l_english:'):
+                line = line.replace('l_english:', 'l_simp_chinese:', 1)
+            lines.append(line)
+    atomic_write(dst, ''.join(lines))
+
+def translate_para(local_path, mde, output_root=None):
+    import hashlib
+    import json
+    import logging
+    entries = extract(ROOT / 'localisation' / local_path, mde)
+    cache_path = ROOT / 'already' / (str(local_path) + '.cache.json')
+    try:
+        cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
+        if not isinstance(cache, dict):
+            raise ValueError('缓存格式错误')
+    except (ValueError, OSError):
+        logging.warning('缓存损坏，重新翻译：%s', cache_path)
+        cache = {}
+    tran, pending, hashes = {}, [], {}
+    for key, text in entries:
+        digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
+        hashes[key] = digest
+        cached = cache.get(key)
+        valid = isinstance(cached, dict) and cached.get('source_hash') == digest and isinstance(cached.get('text'), str) and request.valid_translation(text, cached['text'])
+        tran[key] = Paradox_data(key, cached['text'] if valid else text, int(valid))
+    for key, item in tran.items():
+        if not item.vis:
+            pending.append(key)
+    successful = len(tran) - len(pending)
+    failures = 0
+    for offset in range(0, len(pending), 150):
+        keys = pending[offset:offset + 150]
+        results = request.request_deepseek_batch([tran[key].word for key in keys], mde, successful, len(tran))
+        if len(results) != len(keys):
+            raise ValueError('请求结果数量与输入不一致')
+        for key, result in zip(keys, results):
+            if result['success'] and request.valid_translation(tran[key].word, result['text']):
+                tran[key].word, tran[key].vis = result['text'], 1
+                cache[key] = {'source_hash': hashes[key], 'text': result['text']}
+                successful += 1
             else:
-                new_line=" "+ori+"\""+pdata.word.replace("\n","\\n")+"\"\n"
-            fi.write(new_line)
-def writein(local_path,rel,chn,mode="a"):
-    full_path = "./already/"+local_path
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    with open(full_path,mode,encoding="utf-8") as fi:
-        fi.write(rel+"\""+chn.replace("\n","\\n")+"\"\n")
-def translate_para(local_path,mde):
-    tran: Dict[str, Paradox_data]={}
-    tp=extract("./localisation/"+local_path,mde)
-    for ct in tp:
-        tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=0)
-    already_path = os.path.join("./already", local_path)
-    os.makedirs(os.path.dirname(already_path), exist_ok=True)
-    with open(already_path, "a", encoding="utf-8"):
-        pass
-    ap=extract(already_path,mde)
-    for ct in ap:
-        tran[ct[0]]=Paradox_data(key_w=ct[0],word=ct[1],vis=1)
-    cnt=0
-    # 收集所有需要翻译的文本
-    texts: List[str]=[]
-    pdata: List[Paradox_data]=[]
-    for tct in tran:
-        if tran[tct].vis == 0:
-            pdata.append(Paradox_data(key_w=tran[tct].key_w,word=tran[tct].word,vis=1))
-            texts.append(tran[tct].word)
-        else:
-            cnt+=1
-    if texts!=[]:
-        seg_length=150
-        for i in range(0,len(texts),seg_length):
-            seg_texts = texts[i:min(len(texts),i+seg_length)]
-            seg_pdata = pdata[i:min(len(pdata),i+seg_length)]
-            seg_texts = request.request_deepseek_batch(seg_texts, mde, cnt ,len(tran))
-            for j in range(len(seg_texts)):
-                seg_pdata[j].word=seg_texts[j]
-                tran[seg_pdata[j].key_w] = seg_pdata[j]
-                writein("/"+local_path, seg_pdata[j].key_w, seg_pdata[j].word,"a")
-            cnt+=len(seg_pdata)
-    outputs(local_path,tran,mde)
+                failures += 1
+        # Save each completed segment independently of final publication.
+        atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
+    outputs(local_path, tran, mde, output_root)
+    return failures

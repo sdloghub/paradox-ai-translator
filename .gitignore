@@ -1,0 +1,28 @@
+# Local input, output and translation cache
+/localisation/
+/chn/
+/already/
+
+# Python environments and generated files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Credentials, logs and machine-specific settings
+.env
+.env.*
+!.env.example
+*.log
+.vscode/
+.idea/
+.DS_Store
+
+# Local archives and shortcuts
+*.zip
+*.rar
+*.7z
+*.lnk
