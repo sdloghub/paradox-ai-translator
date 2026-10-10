@@ -179,5 +179,86 @@ class WorkshopTests(unittest.TestCase):
         self.service.save_config({'steam_libraries': [str(self.base / '中文游戏库')]})
         self.assertIn('中文游戏库', self.service.config()['steam_libraries'][0])
 
+    def chinese_file(self, text='甲 $VALUE$', name='test_l_simp_chinese.yml'):
+        path = self.mod / 'localisation/simp_chinese' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('l_simp_chinese:\n key:0 "' + text + '"\n', encoding='utf-8')
+        return path
+
+    def test_scan_imports_native_chinese_and_counts(self):
+        self.chinese_file()
+        item = self.scan()[0]
+        self.assertEqual(item['counts']['translated'], 1)
+        self.assertEqual(item['counts']['untranslated'], 0)
+        def unused(*args):
+            raise AssertionError('already translated')
+        self.service.translate(item['id'], unused)
+
+    def test_changed_english_does_not_reuse_unchanged_native_chinese(self):
+        self.chinese_file()
+        item = self.scan()[0]
+        self.source.write_text('l_english:\n key:0 "Beta $VALUE$"\n')
+        counts = self.service.analyze(item['id'])
+        self.assertEqual(counts['untranslated'], 1)
+        self.assertEqual(counts['translated'], 0)
+        self.service.translate(item['id'], self.translator)
+        self.assertIn('乙', (self.mod / 'localisation/simp_chinese/test_l_simp_chinese.yml').read_text())
+        self.assertEqual(self.service.cache.stats(item, self.service.original_sources(item))['translated'], 1)
+        with self.service.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM translation_entries').fetchone()[0], 2)
+
+    def test_manual_chinese_folder_matches_keys(self):
+        item = self.scan()[0]
+        folder = self.base / 'manual_chinese'
+        folder.mkdir()
+        (folder / 'external_l_simp_chinese.yml').write_text('l_simp_chinese:\n key:0 "甲 $VALUE$"\n', encoding='utf-8')
+        result = self.service.import_cache(item['id'], folder)
+        self.assertEqual(result['imported'], 1)
+        self.assertEqual(result['untranslated'], 0)
+
+    def test_export_import_roundtrip_and_stale_hash_rejection(self):
+        self.chinese_file()
+        item = self.scan()[0]
+        payload = self.service.cache.export(item)
+        path = self.base / 'export.cache.json'
+        path.write_text(json.dumps(payload), encoding='utf-8')
+        another = app.WorkshopService(self.base / 'fresh')
+        another.save_config({'steam_libraries': [str(self.library)]})
+        # Remove local Chinese to prove database import alone suffices.
+        (self.mod / 'localisation/simp_chinese/test_l_simp_chinese.yml').unlink()
+        another.scan(lambda ids: {})
+        self.assertEqual(another.import_cache(item['id'], path)['imported'], 1)
+        self.source.write_text('l_english:\n key:0 "Beta $VALUE$"\n')
+        result = another.import_cache(item['id'], path)
+        self.assertEqual(result['untranslated'], 1)
+        self.assertGreater(result['rejected'], 0)
+
+    def test_foreign_mod_cache_is_rejected(self):
+        self.chinese_file()
+        item = self.scan()[0]
+        payload = self.service.cache.export(item)
+        payload['mod_id'] = '394360:987654'
+        path = self.base / 'foreign.cache.json'
+        path.write_text(json.dumps(payload), encoding='utf-8')
+        result = self.service.import_cache(item['id'], path)
+        self.assertEqual(result['imported'], 0)
+        self.assertGreater(result['rejected'], 0)
+
+    def test_format_corruption_is_not_imported(self):
+        self.chinese_file('甲 $WRONG$')
+        item = self.scan()[0]
+        self.assertEqual(item['counts']['translated'], 0)
+        self.assertEqual(item['counts']['untranslated'], 1)
+
+    def test_ambiguous_cross_file_key_is_not_imported(self):
+        other = self.source.parent / 'other_l_english.yml'
+        other.write_text('l_english:\n key:0 "Beta $VALUE$"\n')
+        item = self.scan()[0]
+        external = self.base / 'external.yml'
+        external.write_text('l_simp_chinese:\n key:0 "甲 $VALUE$"\n', encoding='utf-8')
+        result = self.service.import_cache(item['id'], external)
+        self.assertEqual(result['imported'], 0)
+        self.assertEqual(result['untranslated'], 2)
+
 if __name__ == '__main__':
     unittest.main()

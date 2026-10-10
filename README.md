@@ -53,3 +53,6 @@ Git 中保留源码、`rules.json`、依赖声明、测试和说明文档。克�
 
 单文件打包配置、Windows 本机构建脚本和 GitHub Actions 工作流已加入。
 使用与构建方法见 [Windows使用说明.md](Windows使用说明.md)。
+
+扫描支持游戏分类、已有中文自动提取与已译/待译统计；可手动导入中文文件、文件夹和带原文哈希的缓存 JSON，或导出缓存。
+对应关系保存在 SQLite `translation_entries` 表中，按 Mod、原文件、条目键与英文哈希保存历史译文。

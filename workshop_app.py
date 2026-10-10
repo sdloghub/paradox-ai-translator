@@ -192,6 +192,8 @@ class WorkshopService:
                     previous_files BLOB NOT NULL);
             ''')
         self.database.chmod(0o600)
+        from translation_cache import ModCache
+        self.cache = ModCache(self)
         if demo:
             self.setup_demo()
         self.inventory = {}
@@ -312,7 +314,12 @@ class WorkshopService:
                            (identifier, item['uid'], item['appid'], item['title'], item['path'], item['url'], now()))
                 item['translated'] = bool(db.execute('SELECT 1 FROM versions WHERE mod_id=? LIMIT 1', (identifier,)).fetchone())
         self.inventory = found
-        self.log('扫描完成')
+        for item in found.values():
+            try:
+                self.analyze(item['id'])
+            except (OSError, UnicodeError, ValueError) as error:
+                item['counts'] = {'error': str(error), 'total': 0, 'translated': 0, 'untranslated': 0}
+        self.log('扫描完成（已提取本机中文并检查原文哈希）')
         return list(found.values())
 
     def history(self):
@@ -348,12 +355,36 @@ class WorkshopService:
                         files[name] = original
         return files
 
+    def analyze(self, identifier):
+        from translation_cache import candidates
+        item = self.get_mod(identifier)
+        sources = self.original_sources(item)
+        imported = self.cache.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文')
+        self.cache.sync_workspace(item, sources)
+        item['counts'] = self.cache.stats(item, sources)
+        self.log(f"{item['title']}：已翻译 {item['counts']['translated']} / 待翻译 {item['counts']['untranslated']}")
+        return {**item['counts'], **imported}
+
+    def import_cache(self, identifier, path):
+        from translation_cache import candidates
+        item = self.get_mod(identifier)
+        chosen = Path(path).expanduser()
+        if not chosen.exists():
+            raise ValueError('所选文件或目录不存在')
+        sources = self.original_sources(item)
+        result = self.cache.import_candidates(item, sources, candidates(chosen, item['game']), '手动导入')
+        self.cache.sync_workspace(item, sources)
+        item['counts'] = self.cache.stats(item, sources)
+        self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条")
+        return {**result, **item['counts']}
+
     def translate(self, identifier, translator=None, deploy=True):
         item = self.get_mod(identifier)
+        self.analyze(identifier)
         config = self.config()
         if self.demo and translator is None:
             translator = self.demo_translate
-        if translator is None and not config['api_key']:
+        if translator is None and not config['api_key'] and item['counts']['untranslated']:
             raise ValueError('请先在设置中保存 API Key')
         try:
             import paradox
@@ -391,6 +422,8 @@ class WorkshopService:
                 if not data.startswith(b'\xef\xbb\xbf'):
                     data = b'\xef\xbb\xbf' + data
                 translated[target_path(name, item['game'])] = data
+            self.cache.sync_workspace(item, sources)
+            item['counts'] = self.cache.stats(item, sources)
             if failures:
                 raise ValueError(f'{failures} 条翻译失败，成功缓存已保存；未修改 Workshop 文件，点击补充翻译可重试')
             digest = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() for name, data in sorted(sources.items()))).hexdigest()
@@ -522,6 +555,21 @@ class Handler(BaseHTTPRequestHandler):
                 identifier, version = body['id'], int(body['version_id'])
                 service.get_mod(identifier)
                 service.start('restore', lambda: service.restore(version, identifier))
+            elif self.path == '/api/analyze':
+                identifier = body['id']
+                service.get_mod(identifier)
+                service.start('analyze', lambda: service.analyze(identifier))
+            elif self.path == '/api/import':
+                identifier, chosen = body['id'], body['path']
+                service.get_mod(identifier)
+                service.start('import', lambda: service.import_cache(identifier, chosen))
+            elif self.path == '/api/export':
+                item = service.get_mod(body['id'])
+                return self.send(200, service.cache.export(item))
+            elif self.path == '/api/pick':
+                if service.status()['running']:
+                    raise ValueError('请等待任务结束后选择文件')
+                return self.send(200, {'path': pick_import_path(body.get('kind', 'file'))})
             elif self.path == '/api/open':
                 identifier = body['id']
                 item = service.get_mod(identifier)
@@ -534,6 +582,32 @@ class Handler(BaseHTTPRequestHandler):
             self.send(400, {'error': str(error)})
         except Exception as error:
             self.send(500, {'error': type(error).__name__})
+
+
+def pick_import_path(kind):
+    import subprocess
+    if kind not in ('file', 'folder'):
+        raise ValueError('选择类型错误')
+    command = [sys.executable, '--choose-import', kind] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT / 'workshop_app.py'), '--choose-import', kind]
+    result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', timeout=180,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0)
+    if result.returncode:
+        raise ValueError('无法打开系统选择框，请使用路径输入导入')
+    return result.stdout.strip()
+
+
+def choose_import(kind):
+    import tkinter as tk
+    from tkinter import filedialog
+    window = tk.Tk()
+    window.withdraw()
+    try:
+        chosen = (filedialog.askdirectory(title='选择中文文件夹或缓存目录', parent=window)
+                  if kind == 'folder' else filedialog.askopenfilename(title='选择中文 YML 或缓存 JSON', parent=window,
+                    filetypes=[('Translation files', '*.yml *.json'), ('All files', '*.*')]))
+        print(chosen or '', flush=True)
+    finally:
+        window.destroy()
 
 
 def self_test():
@@ -553,18 +627,28 @@ def self_test():
         output.unlink()
         service.restore(result['version_id'], item['id'])
         assert output.is_file() and len(service.history()) == 1
+        counts = service.analyze(item['id'])
+        assert counts['translated'] == 2 and counts['untranslated'] == 0
+        exported = service.cache.export(item)
+        cache_path = Path(directory) / 'export.cache.json'
+        cache_path.write_text(json.dumps(exported), encoding='utf-8')
+        service.import_cache(item['id'], cache_path)
         assert service.config()['api_key'] == ''
     print('WORKSHOP_TRANSLATOR_SELF_TEST_OK', flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description='Workshop 翻译程序 · Windows / macOS')
+    parser.add_argument('--choose-import', choices=['file', 'folder'], help=argparse.SUPPRESS)
     parser.add_argument('--port', type=int, default=0)
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--data-dir', type=Path)
     parser.add_argument('--demo', action='store_true', help='模拟 Mod 与模型回复，不调用 Steam 或付费接口')
     parser.add_argument('--self-test', action='store_true', help='离线检查打包资源、翻译、数据库和文件恢复')
     args = parser.parse_args()
+    if args.choose_import:
+        choose_import(args.choose_import)
+        return
     if args.self_test:
         self_test()
         return

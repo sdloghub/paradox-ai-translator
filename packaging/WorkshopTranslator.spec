@@ -6,7 +6,7 @@ analysis = Analysis(
     pathex=[str(root)],
     binaries=[],
     datas=[(str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.')],
-    hiddenimports=['paradox', 'request', 'openai', 'winreg'],
+    hiddenimports=['paradox', 'request', 'openai', 'winreg', 'translation_cache', 'tkinter.filedialog'],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     noarchive=False,
 )
