@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Local Workshop inventory, translation workspaces and SQLite backup service."""
 import argparse
+
+_STARTUP_STARTED = __import__("time").perf_counter()
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from functools import partial
@@ -47,7 +49,7 @@ def open_folder(path):
 GAMES = {'281990': ('st', '群星'), '394360': ('hoi4', '钢铁雄心4'),
          '236850': ('eu4', '欧陆风云4'), '1158310': ('ck3', '十字军之王3'),
          '529340': ('vic3', '维多利亚3')}
-DEFAULT_CONFIG = {'api_format': 'openai', 'provider': '', 'base_url': 'https://api.openai.com/v1',
+DEFAULT_CONFIG = {'api_format': 'openai', 'provider': '', 'config_name': '', 'base_url': 'https://api.openai.com/v1',
                   'api_key': '', 'model': 'gpt-4.1-mini', 'batch_size': 10,
                   'concurrency': 3, 'steam_libraries': []}
 
@@ -207,6 +209,7 @@ class WorkshopService:
                 db.execute("ALTER TABLE versions ADD COLUMN provider TEXT NOT NULL DEFAULT ''")
             if 'origins' not in columns:
                 db.execute("ALTER TABLE versions ADD COLUMN origins TEXT NOT NULL DEFAULT '[]'")
+            db.execute('CREATE TABLE IF NOT EXISTS seed_imports (path TEXT PRIMARY KEY, signature TEXT NOT NULL)')
             db.execute("CREATE TABLE IF NOT EXISTS source_runs (id INTEGER PRIMARY KEY, kind TEXT, name TEXT, created_at TEXT)")
         self.database.chmod(0o600)
         from translation_cache import ModCache
@@ -219,8 +222,6 @@ class WorkshopService:
                               db.execute('SELECT mod_id,item_json FROM scan_snapshots')}
         for item in self.inventory.values():
             item.setdefault('scan_state', '待复查' if item.get('counts') else '未扫描')
-        self.inventory = {key: item for key, item in self.inventory.items()
-                          if Path(item['path']).is_dir() and not Path(item['path']).is_symlink()}
         self.job = {'running': False, 'kind': '', 'messages': [], 'result': None, 'error': None}
         self.lock = threading.Lock()
 
@@ -274,17 +275,42 @@ class WorkshopService:
         if not isinstance(cfg.get('provider', ''), str) or len(cfg.get('provider', '')) > 120:
             raise ValueError('提供商名称需为 120 字以内的文字')
         cfg['provider'] = cfg.get('provider', '').strip()
+        if not isinstance(cfg.get('config_name', ''), str) or len(cfg.get('config_name', '')) > 120:
+            raise ValueError('配置名称需为 120 字以内的文字')
+        cfg['config_name'] = cfg.get('config_name', '').strip()
         atomic_bytes(self.config_path, json.dumps(cfg, ensure_ascii=False, indent=2).encode(), private=True)
         if self.providers_path.exists():
             registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
         else:
             registry = {'format': 'workshop-providers-v1', 'profiles': {}}
-        if cfg['provider'] or cfg['api_key']:
-            label = cfg['provider'] or registry.get('active') or f"翻译-{datetime.now().date()}-1"
+        if cfg['config_name'] or cfg['provider'] or cfg['api_key']:
+            label = cfg['config_name'] or cfg['provider'] or registry.get('active') or f"翻译-{datetime.now().date()}-1"
             registry['active'] = label
-            registry['profiles'][label] = {**cfg, 'provider': label, 'saved_at': now()}
+            registry['profiles'][label] = {**cfg, 'config_name': label, 'provider': cfg['provider'] or label, 'saved_at': now()}
         atomic_bytes(self.providers_path, json.dumps(registry, ensure_ascii=False, indent=2).encode(), private=True)
         return self.public_config()
+
+    def profiles(self):
+        registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
+        return [{'name': name, 'provider': profile.get('provider', name),
+                 'base_url': profile.get('base_url', ''), 'model': profile.get('model', ''),
+                 'has_api_key': bool(profile.get('api_key'))}
+                for name, profile in registry.get('profiles', {}).items()]
+
+    def switch_profile(self, name):
+        if self.status()['running']:
+            raise ValueError('请等待任务结束后切换配置')
+        registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
+        profile = registry.get('profiles', {}).get(name)
+        if not isinstance(profile, dict):
+            raise ValueError('未找到已保存的 API 配置')
+        # Profile changes API settings only; keep this computer's Steam directories.
+        fields = ('api_format', 'provider', 'config_name', 'api_key', 'base_url', 'model', 'batch_size', 'concurrency')
+        changes = {key: profile[key] for key in fields if key in profile}
+        changes['config_name'] = name
+        changes['provider'] = profile.get('provider') or name
+        changes.setdefault('api_key', '')
+        return self.save_config(changes)
 
     def log(self, message):
         with self.lock:
@@ -401,8 +427,9 @@ class WorkshopService:
             db.execute('INSERT INTO source_runs(kind,name,created_at) VALUES (?,?,?)', (kind, label, datetime.now().isoformat()))
         registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
         if kind == 'AI':
-            registry.setdefault('profiles', {})[label] = {**self.config(), 'provider': label, 'saved_at': now()}
-            registry['active'] = label
+            profile_name = self.config().get('config_name') or label
+            registry.setdefault('profiles', {})[profile_name] = {**self.config(), 'config_name': profile_name, 'provider': self.config().get('provider') or label, 'saved_at': now()}
+            registry['active'] = profile_name
         registry.setdefault('sources', {})[label] = {'kind': kind, 'name': label, 'updated_at': now()}
         atomic_bytes(self.providers_path, json.dumps(registry, ensure_ascii=False, indent=2).encode(), private=True)
         return label
@@ -420,19 +447,27 @@ class WorkshopService:
         seed = bundle / 'completed.json'
         if not seed.is_file() or self.demo:
             return
+        stat = seed.stat()
+        signature = f'{stat.st_size}:{stat.st_mtime_ns}'
+        with self.connect() as db:
+            existing = db.execute('SELECT signature FROM seed_imports WHERE path=?', (str(seed.resolve()),)).fetchone()
+        if existing and existing[0] == signature:
+            return
         payload = json.loads(seed.read_text(encoding='utf-8'))
         if payload.get('format') != 'workshop-completed-v1':
             raise ValueError('完成标记文件格式错误')
-        import request
         from translation_cache import digest
+        imported = 0
         with self.connect() as db:
             for row in payload.get('entries', []):
                 if not isinstance(row, dict) or not all(isinstance(row.get(key), str) for key in ('mod_id','source_file','entry_key','source_hash','chinese','chinese_hash','origin')):
                     continue
                 if not re.fullmatch(r'[0-9a-f]{64}', row['source_hash']) or digest(row['chinese']) != row['chinese_hash']:
                     continue
-                db.execute('INSERT OR IGNORE INTO translation_entries(mod_id,source_file,entry_key,source_hash,chinese,chinese_hash,origin) VALUES (?,?,?,?,?,?,?)', tuple(row[key] for key in ('mod_id','source_file','entry_key','source_hash','chinese','chinese_hash','origin')))
-        self.save_completed()
+                imported += db.execute('INSERT OR IGNORE INTO translation_entries(mod_id,source_file,entry_key,source_hash,chinese,chinese_hash,origin) VALUES (?,?,?,?,?,?,?)', tuple(row[key] for key in ('mod_id','source_file','entry_key','source_hash','chinese','chinese_hash','origin'))).rowcount
+            db.execute('INSERT OR REPLACE INTO seed_imports VALUES (?,?)', (str(seed.resolve()), signature))
+        if imported:
+            self.save_completed()
 
     def history(self):
         with self.connect() as db:
@@ -677,7 +712,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': '访问令牌无效'})
         if self.path == '/api/state':
             service = self.server.service
-            return self.send(200, {'config': service.public_config(), 'mods': list(service.inventory.values()),
+            return self.send(200, {'config': service.public_config(), 'profiles': service.profiles(), 'mods': list(service.inventory.values()),
                                    'history': service.history(), 'job': service.status(), 'data_dir': str(service.data_dir), 'demo': service.demo})
         self.send(404, {'error': '未找到'})
 
@@ -692,6 +727,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError('请求格式错误')
+            if self.path == '/api/profile':
+                return self.send(200, service.switch_profile(body['name']))
             if self.path == '/api/config':
                 if service.status()['running']:
                     raise ValueError('请等待任务结束后修改配置')
@@ -766,8 +803,7 @@ def choose_import(kind):
 def self_test():
     # Run on the actual packaged executable, without Steam, credentials or network.
     import request
-    if request.OpenAI is None:
-        raise RuntimeError('打包缺少 openai 依赖')
+    request.load_sdk()
     request.findrule('hoi4')
     page = (ROOT / 'workshop_ui.html').read_text(encoding='utf-8')
     assert '__APP_TOKEN__' in page
@@ -809,6 +845,7 @@ def main():
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--data-dir', type=Path)
     parser.add_argument('--demo', action='store_true', help='模拟 Mod 与模型回复，不调用 Steam 或付费接口')
+    parser.add_argument('--startup-check', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--self-test', action='store_true', help='离线检查打包资源、翻译、数据库和文件恢复')
     args = parser.parse_args()
     if args.choose_import:
@@ -818,6 +855,9 @@ def main():
         self_test()
         return
     service = WorkshopService(args.data_dir, demo=args.demo)
+    if args.startup_check:
+        print(json.dumps({'python_ready_seconds': round(time.perf_counter()-_STARTUP_STARTED, 4), 'sdk_loaded': 'openai' in sys.modules}), flush=True)
+        return
     server = AppServer(('127.0.0.1', args.port), service)
     url = f'http://127.0.0.1:{server.server_port}'
     print(f'Workshop 翻译程序：{url}\n数据目录：{service.data_dir}\n按 Ctrl+C 停止', flush=True)

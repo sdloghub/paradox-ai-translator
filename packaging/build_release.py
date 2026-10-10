@@ -27,7 +27,8 @@ def build_release(destination=None, data_dir=None, executable=None):
         saved = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'WorkshopTranslator/app_data'
     data_dir = Path(data_dir or saved).resolve()
     destination = Path(destination or ROOT / 'dist/WorkshopTranslator-Windows.zip')
-    executable = Path(executable or ROOT / 'dist/WorkshopTranslator.exe')
+    preferred = ROOT / 'dist/WorkshopTranslator/WorkshopTranslator.exe'
+    executable = Path(executable or (preferred if preferred.is_file() else ROOT / 'dist/WorkshopTranslator.exe'))
     if not executable.is_file():
         raise FileNotFoundError('请先构建 Windows EXE')
     config = dict(workshop_app.DEFAULT_CONFIG)
@@ -57,6 +58,11 @@ def build_release(destination=None, data_dir=None, executable=None):
         with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
             prefix = 'WorkshopTranslator/'
             archive.write(executable, prefix + 'WorkshopTranslator.exe')
+            support = executable.parent / '_internal'
+            if support.is_dir():
+                for dependency in support.rglob('*'):
+                    if dependency.is_file():
+                        archive.write(dependency, prefix + str(dependency.relative_to(executable.parent)).replace('\\', '/'))
             for name in files:
                 archive.write(ROOT / name, prefix + name)
             for name, payload in [('config.json', config), ('providers.json', profiles), ('completed.json', completed)]:

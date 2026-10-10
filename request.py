@@ -3,14 +3,23 @@ import json
 from pathlib import Path
 import concurrent.futures
 
-try:
-    from openai import OpenAI, APIConnectionError, APITimeoutError
-except ImportError:
-    OpenAI = None
-    class APIConnectionError(Exception):
-        pass
-    class APITimeoutError(Exception):
-        pass
+# SDK imports are deferred until a real API request or packaged self-test.
+OpenAI = None
+class APIConnectionError(Exception):
+    pass
+class APITimeoutError(Exception):
+    pass
+
+def load_sdk():
+    global OpenAI, APIConnectionError, APITimeoutError
+    if OpenAI is not None:
+        return
+    try:
+        from openai import OpenAI as sdk_client, APIConnectionError as sdk_connection, APITimeoutError as sdk_timeout
+    except ImportError as error:
+        raise RuntimeError('缺少 openai 依赖，请运行启动脚本或安装 requirements.txt') from error
+    OpenAI, APIConnectionError, APITimeoutError = sdk_client, sdk_connection, sdk_timeout
+
 import logging
 import time
 import os
@@ -48,8 +57,7 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
     api_key = config.get("api_key") or os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise RuntimeError("请在设置中填写 API Key")
-    if OpenAI is None:
-        raise RuntimeError("缺少 openai 依赖，请运行启动脚本或安装 requirements.txt")
+    load_sdk()
     client = OpenAI(api_key=api_key, base_url=config.get("base_url", "https://api.deepseek.com"),
                     timeout=90, max_retries=0)
     model = config.get("model", "deepseek-chat")

@@ -13,7 +13,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 & $python -m PyInstaller --clean --noconfirm packaging/WorkshopTranslator.spec
 if ($LASTEXITCODE -ne 0) { throw 'Executable build failed.' }
-& '.\dist\WorkshopTranslator.exe' --self-test
+& '.\dist\WorkshopTranslator\WorkshopTranslator.exe' --self-test
 if ($LASTEXITCODE -ne 0) { throw 'Packaged executable self-test failed.' }
 & $python packaging/build_release.py
 if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed.' }

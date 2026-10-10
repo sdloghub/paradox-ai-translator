@@ -51,7 +51,7 @@ Git 中保留源码、`rules.json`、依赖声明、测试和说明文档。克�
 
 ## Windows EXE
 
-单文件打包配置、Windows 本机构建脚本和 GitHub Actions 工作流已加入。
+文件夹打包配置、Windows 本机构建脚本和 GitHub Actions 工作流已加入，避免单文件启动时反复解压依赖。
 使用与构建方法见 [Windows使用说明.md](Windows使用说明.md)。
 
 单个 Mod 扫描支持已有中文自动提取与翻译统计；可手动导入中文文件、文件夹和带原文哈希的缓存 JSON，或导出缓存。
@@ -67,8 +67,16 @@ API 设置填写提供商名称，配置保存在本机 config.json 与 provider
 
 ### 程序发布压缩包
 
-每次打包生成 dist/WorkshopTranslator-Windows.zip。解压后的 WorkshopTranslator 文件夹内，EXE、Python 工具、config.json、providers.json、completed.json 并列，资源位于 assets/vendor。发布包 API Key 留空；本机保存的密钥保留原值。
+每次打包生成 dist/WorkshopTranslator-Windows.zip。解压后的 WorkshopTranslator 文件夹内，EXE、Python 工具、config.json、providers.json、completed.json 并列，资源位于 assets/vendor，EXE 运行依赖位于 _internal。请完整解压并保留 _internal，不要单独移动 EXE。发布包 API Key 留空；本机保存的密钥保留原值。
 
 运行 `python packaging/build_release.py --data-dir app_data` 会复制指定数据目录的最新配置与完成记录，更新已有发布 ZIP。首次运行读取包内配置；已有本机保存时保留现有配置，完成标记按英文哈希合并。Windows 数据仍保存于 %LOCALAPPDATA%/WorkshopTranslator/app_data/。完整历史备份以本机数据库为准，JSON 完成标记用于恢复缓存。
 
 GitHub 构建只使用空配置模板，不上传本机密钥、Mod、数据库或完成记录。Steam 投稿仅预留界面和本机接口，显示「尚未启用」，不会上传内容。
+
+### 保存与切换 API 配置
+
+在「API 与 Steam 库设置」填写配置名称，再点击「保存配置」。同名配置更新保存，不同名称可分别保存同一提供商的不同模型。下拉选取已保存配置后点击「使用此配置」，加载对应接口、模型和本地密钥，Steam 库目录保持当前设置。翻译任务运行期间不能切换。API Key 保存在本机 providers.json，页面只显示是否已保存密钥；发布 ZIP 中密钥留空。
+
+### 提示词与启动优化
+
+rules.json 的提示词统一保护变量、图标、颜色格式、转义符和批次分隔符；各游戏保留独立风格，允许必要的括号与专名。启动时延迟加载模型 SDK，未改变的完成记录不重复导入，缓存目录清单直接读取。`--startup-check` 输出内部启动耗时且不调用外部接口。Windows 构建额外比较同代码单文件与文件夹模式，每种测量三次，结果保存在 startup-benchmark.json；该测量不包含浏览器渲染，也不代表所有用户电脑的耗时。

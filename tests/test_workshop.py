@@ -160,6 +160,9 @@ class WorkshopTests(unittest.TestCase):
         self.service.completed_path.unlink()  # Package can recover markers from an older local database.
         exe = self.base / 'test.exe'
         exe.write_bytes(b'MZtest')
+        support = exe.parent / '_internal'
+        support.mkdir()
+        (support / 'runtime.dll').write_bytes(b'test-runtime')
         package = module.build_release(self.base / 'release.zip', self.service.data_dir, exe)
         with zipfile.ZipFile(package) as archive:
             config = json.loads(archive.read('WorkshopTranslator/config.json'))
@@ -169,6 +172,7 @@ class WorkshopTests(unittest.TestCase):
             self.assertEqual(registry['profiles']['供应商']['api_key'], '')
             self.assertEqual(len(completed['entries']), 1)
             self.assertIn('WorkshopTranslator/workshop_app.py', archive.namelist())
+            self.assertEqual(archive.read('WorkshopTranslator/_internal/runtime.dll'), b'test-runtime')
         self.service.save_config({'model': 'updated-model'})
         module.build_release(package, self.service.data_dir, exe)
         with zipfile.ZipFile(package) as archive:
@@ -190,6 +194,61 @@ class WorkshopTests(unittest.TestCase):
             fresh.save_config({'provider': '本机提供商'})
             again = app.WorkshopService(fresh.data_dir)
             self.assertEqual(again.config()['provider'], '本机提供商')
+
+    def test_switch_saved_profiles_uses_matching_key_and_preserves_libraries(self):
+        self.service.save_config({'config_name': '日常翻译', 'provider': '提供商', 'model': 'model-a', 'api_key': 'key-a'})
+        self.service.save_config({'config_name': '精校模型', 'provider': '提供商', 'model': 'model-b', 'api_key': 'key-b'})
+        libraries = [str(self.base / 'NewLibrary')]
+        self.service.save_config({'steam_libraries': libraries})
+        public = self.service.switch_profile('日常翻译')
+        self.assertEqual(public['model'], 'model-a')
+        self.assertEqual(self.service.config()['api_key'], 'key-a')
+        self.assertEqual(public['steam_libraries'], libraries)
+        self.assertNotIn('api_key', public)
+        profiles = self.service.profiles()
+        self.assertEqual({p['name'] for p in profiles}, {'日常翻译', '精校模型'})
+        self.assertNotIn('key-a', json.dumps(profiles))
+        restarted = app.WorkshopService(self.service.data_dir)
+        restarted.switch_profile('精校模型')
+        self.assertEqual(restarted.config()['api_key'], 'key-b')
+
+    def test_switch_keyless_profile_does_not_inherit_other_profile_secret(self):
+        self.service.save_config({'config_name': '无密钥模板', 'provider': '模板', 'api_key': ''})
+        self.service.save_config({'config_name': '已配置接口', 'api_key': 'private-key'})
+        selected = self.service.switch_profile('无密钥模板')
+        self.assertFalse(selected['has_api_key'])
+        self.assertEqual(self.service.config()['api_key'], '')
+
+    def test_switch_unknown_or_running_profile_leaves_config_unchanged(self):
+        previous = self.service.config()
+        with self.assertRaises(ValueError):
+            self.service.switch_profile('missing')
+        self.service.job['running'] = True
+        with self.assertRaisesRegex(ValueError, '等待任务'):
+            self.service.switch_profile('missing')
+        self.assertEqual(self.service.config(), previous)
+
+    def test_unchanged_completion_seed_is_not_parsed_again_on_restart(self):
+        self.scan()
+        self.service.translate('394360:123456', self.translator)
+        bundle = self.base / 'bundle'
+        bundle.mkdir()
+        seed = bundle / 'completed.json'
+        seed.write_bytes(self.service.completed_path.read_bytes())
+        with patch.object(app, 'ROOT', bundle):
+            first = app.WorkshopService(self.base / 'seed-test')
+            read_text = Path.read_text
+            def guard(path, *args, **kwargs):
+                if path == seed:
+                    self.fail('unchanged completion seed was re-read')
+                return read_text(path, *args, **kwargs)
+            with patch.object(Path, 'read_text', guard):
+                app.WorkshopService(first.data_dir)
+
+    def test_startup_check_does_not_import_model_sdk(self):
+        import subprocess
+        result = subprocess.run([sys.executable, str(ROOT / 'workshop_app.py'), '--startup-check', '--data-dir', str(self.base / 'startup-check')], capture_output=True, text=True, check=True)
+        self.assertFalse(json.loads(result.stdout)['sdk_loaded'])
 
     def test_offline_scan_uses_descriptor(self):
         def unavailable(ids):

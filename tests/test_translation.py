@@ -22,6 +22,7 @@ def load(name, filename):
 
 with patch.dict(sys.modules, {'openai': sdk}):
     request = load('translation_request_test', 'request.py')
+    request.load_sdk()
 with patch.dict(sys.modules, {'request': request}):
     paradox = load('translation_paradox_test', 'paradox.py')
 with patch.dict(sys.modules, {'paradox': paradox}):

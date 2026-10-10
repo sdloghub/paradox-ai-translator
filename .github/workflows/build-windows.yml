@@ -31,26 +31,36 @@ jobs:
         run: python -m pip install -r requirements.txt -r packaging/requirements-build.txt
       - name: Run tests
         run: python -m unittest discover -s tests -v
-      - name: Build single executable
+      - name: Build fast folder executable
         run: python -m PyInstaller --clean --noconfirm packaging/WorkshopTranslator.spec
       - name: Test packaged executable offline
         shell: pwsh
         run: |
-          & .\dist\WorkshopTranslator.exe --self-test
+          & .\dist\WorkshopTranslator\WorkshopTranslator.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Packaged self-test failed.' }
+      - name: Build single-file startup comparison
+        shell: pwsh
+        run: |
+          $env:WORKSHOP_BUILD_MODE = 'onefile'
+          python -m PyInstaller --clean --noconfirm --distpath dist/benchmark --workpath build/benchmark packaging/WorkshopTranslator.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Comparison build failed.' }
+          Remove-Item Env:WORKSHOP_BUILD_MODE
+      - name: Measure Windows startup
+        run: python packaging/benchmark_startup.py --folder dist/WorkshopTranslator/WorkshopTranslator.exe --single dist/benchmark/WorkshopTranslator.exe
       - name: Create program release ZIP
         run: python packaging/build_release.py
       - name: Check checksum
         shell: pwsh
         run: |
-          $hash = (Get-FileHash dist/WorkshopTranslator.exe -Algorithm SHA256).Hash.ToLower()
+          $hash = (Get-FileHash dist/WorkshopTranslator/WorkshopTranslator.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  WorkshopTranslator.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: WorkshopTranslator-Windows-x64
           path: |
-            dist/WorkshopTranslator.exe
+            dist/WorkshopTranslator/
             dist/SHA256SUMS.txt
+            dist/startup-benchmark.json
             dist/WorkshopTranslator-Windows.zip
           if-no-files-found: error
           retention-days: 14
