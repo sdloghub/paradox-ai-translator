@@ -169,6 +169,9 @@ class ModCache:
         translated = needs_update = 0
         origins = {}
         with self.service.connect() as db:
+            history = {}
+            for filename, key, source_hash in db.execute('SELECT source_file,entry_key,source_hash FROM translation_entries WHERE mod_id=?', (item['id'],)):
+                history.setdefault((filename, canonical_key(key)), set()).add(source_hash)
             for entry in current:
                 row = db.execute('''SELECT chinese,origin FROM translation_entries WHERE
                     mod_id=? AND source_file=? AND entry_key=? AND source_hash=?''',
@@ -176,7 +179,7 @@ class ModCache:
                 if row and request.valid_translation(entry['text'], row[0]):
                     translated += 1
                     origins[row[1]] = origins.get(row[1], 0) + 1
-                elif any(canonical_key(old[0]) == canonical_key(entry['key']) and old[1] != digest(entry['text']) for old in db.execute('SELECT entry_key,source_hash FROM translation_entries WHERE mod_id=? AND source_file=?', (item['id'], entry['source_file']))):
+                elif history.get((entry['source_file'], canonical_key(entry['key'])), set()) - {digest(entry['text'])}:
                     needs_update += 1
         return {'total': len(current), 'translated': translated, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 
