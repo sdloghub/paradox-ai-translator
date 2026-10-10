@@ -86,3 +86,12 @@ rules.json 的提示词统一保护变量、图标、颜色格式、转义符和
 每个游戏库的每个游戏 ACF 每次刷新只读取一次，保留 manifest 为字符串。WorkshopItemDetails 单独出现的物品不视为已安装；latest_manifest 不同或 latest_timeupdated 较新时提示 Steam 有待安装更新。完整的空安装清单会清空当前列表，历史备份仍保留。清单缺失、无效或写入不完整时提示并回退到目录检查。仅支持五个 Paradox 游戏；ACF兼容范围以用户样例与测试为准，未找到官方公开字段规范。
 
 阅读「交接说明.md」了解开发上下文。运行 python packaging/build_handoff.py 会将必要源码、测试、交接说明和 Windows 发布 ZIP 打包为 dist/WorkshopTranslator-Codex-Handoff.zip，不收录 .git、密钥、Mod、数据库或完整聊天原始记录。
+
+
+## 报错保留英文与缓存状态（2026-10-10）
+
+Workshop 工作台遇到本地化解析异常或模型返回 ValueError 时，不再中止整个 Mod：问题行保留英文，其余条目继续，结束后返回报错行数、文件与行号，明细保存在工作目录 translation-report.json；已有中文文件仍先备份，失败条目不写入成功缓存。
+
+已翻译表示有效缓存译文已写入本机 Mod；已缓存表示英文哈希匹配但尚未写入的译文。旧统计字段 translated 保留内部“有效译文总数”含义，界面采用 deployed 显示已写入数量，cached 显示待写入缓存。
+
+导入时提示：带哈希缓存只核对本机英文，无法检查 Steam 尚未安装的更新；无哈希中文无法判断原文是否更新，需要用户确认来源版本。扫描按钮改为橙色，开始AI翻译保持蓝色。

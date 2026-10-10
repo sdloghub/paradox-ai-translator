@@ -33,6 +33,22 @@ class BugBranchTests(unittest.TestCase):
         with self.assertRaisesRegex(paradox.LocalisationError, 'bad.yml:2'):
             entries({'bad.yml': b'l_english:\n key:0 "unterminated\n'}, 'st')
 
+    def test_tolerant_translation_preserves_bad_line_and_reports_number(self):
+        raw = 'l_english:\n bad:0 "Unclosed\n good:0 "Hello"\n'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'localisation/st/test_l_english.yml'
+            source.parent.mkdir(parents=True)
+            source.write_text(raw, encoding='utf-8')
+            issues = []
+            paradox.translate_para('st/test_l_english.yml', 'st', project_root=root,
+                issues=issues, translator=lambda texts, *args: [{'text': '你好', 'success': True} for text in texts])
+            output = (root / 'chn/st/test_l_simp_chinese.yml').read_text('utf-8')
+            self.assertIn(' bad:0 "Unclosed\n', output)
+            self.assertIn(' good:0 "你好"', output)
+            self.assertEqual([issue['line'] for issue in issues], [2])
+            self.assertEqual(source.read_text('utf-8'), raw)
+
     def test_common_prompt_keeps_distinct_game_guidance(self):
         rules = json.loads((Path(request.__file__).parent / 'rules.json').read_text('utf-8'))
         self.assertEqual(set(rules), {'common', 'games'})

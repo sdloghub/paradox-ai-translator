@@ -330,19 +330,39 @@ class WorkshopTests(unittest.TestCase):
         self.assertEqual(app.unarchive(originals)['localisation/english/test_l_english.yml'], original)
         self.assertIn('甲', app.unarchive(chinese)['localisation/simp_chinese/test_l_simp_chinese.yml'].decode())
 
-    def test_failed_translation_does_not_touch_mod_or_create_version(self):
+    def test_failed_translation_preserves_english_and_backs_up_old_output(self):
         self.scan()
         output = self.mod / 'localisation/simp_chinese/test_l_simp_chinese.yml'
         output.parent.mkdir(parents=True)
         output.write_text('previous chinese')
         def failed(texts, *args):
             return [{'text': text, 'success': False} for text in texts]
-        with self.assertRaisesRegex(ValueError, '未修改 Workshop'):
-            self.service.translate('394360:123456', failed)
-        self.assertEqual(output.read_text(), 'previous chinese')
-        self.assertEqual(self.service.history(), [])
+        result = self.service.translate('394360:123456', failed)
+        self.assertIn('Alpha $VALUE$', output.read_text('utf-8-sig'))
+        self.assertEqual(result['error_lines'], 1)
+        self.assertEqual(result['issues'][0]['line'], 2)
+        self.assertEqual(len(self.service.history()), 1)
         self.service.translate('394360:123456', self.translator)
         self.assertIn('甲', output.read_text())
+
+    def test_cached_entries_are_distinct_from_deployed_entries(self):
+        item = self.scan()[0]
+        self.service.translate(item['id'], self.translator, deploy=False)
+        counts = self.service.analyze(item['id'])
+        self.assertEqual((counts['deployed'], counts['cached']), (0, 1))
+        self.service.translate(item['id'], self.translator)
+        counts = self.service.analyze(item['id'])
+        self.assertEqual((counts['deployed'], counts['cached']), (1, 0))
+
+    def test_valueerror_from_provider_preserves_english_and_reports_line(self):
+        self.scan()
+        def broken(*args):
+            raise ValueError('invalid provider result')
+        result = self.service.translate('394360:123456', broken)
+        self.assertEqual(result['error_lines'], 1)
+        self.assertEqual(result['issues'][0]['line'], 2)
+        counts = self.service.analyze('394360:123456')
+        self.assertEqual(counts['translated'], 0)
 
     def test_repeated_eu4_uses_original_backup(self):
         eu = self.library / 'steamapps/workshop/content/236850/9999'

@@ -14,11 +14,17 @@ def digest(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
-def entries(files, game, strict=True):
+def entries(files, game, strict=True, issues=None):
     result = []
     for filename, data in files.items():
         for number, line in enumerate(data.decode('utf-8-sig').splitlines(keepends=True), 1):
-            match = paradox.checked_line(line, filename, number) if strict else paradox.parse_line(line)
+            try:
+                match = paradox.checked_line(line, filename, number) if strict else paradox.parse_line(line)
+            except paradox.LocalisationError:
+                if issues is None:
+                    raise
+                issues.append({'file': filename, 'line': number, 'reason': '无法解析；翻译时保留英文原行'})
+                continue
             if match:
                 result.append({'source_file': filename, 'key': match['prefix'].lstrip(),
                                'text': paradox.source_text(match, game)})
@@ -88,7 +94,7 @@ class ModCache:
             VALUES (?,?,?,?,?,?,?)''', (identifier, entry['source_file'], entry['key'], digest(entry['text']), text, digest(text), origin))
 
     def import_candidates(self, item, sources, translations, origin):
-        source_entries = entries(sources, item['game'])
+        source_entries = entries(sources, item['game'], strict=False)
         imported = rejected = 0
         source_counts = {}
         for entry in source_entries:
@@ -154,7 +160,7 @@ class ModCache:
                 if not isinstance(existing, dict):
                     existing = {}
                 before = json.dumps(existing, ensure_ascii=False, indent=2)
-                for entry in entries({name: sources[name]}, item['game']):
+                for entry in entries({name: sources[name]}, item['game'], strict=False):
                     h = digest(entry['text'])
                     text = cached_rows.get((name, entry['key'], h))
                     cached = existing.get(entry['key'], {})
@@ -168,8 +174,19 @@ class ModCache:
         return workspace
 
     def stats(self, item, sources):
-        current = entries(sources, item['game'])
+        issues = []
+        current = entries(sources, item['game'], issues=issues)
         translated = needs_update = 0
+        deployed = 0
+        local_entries = {}
+        from workshop_app import target_path
+        for filename in sources:
+            path = Path(item['path']) / target_path(filename, item['game'])
+            if path.is_file():
+                try:
+                    local_entries[filename] = {canonical_key(e['key']): e['text'] for e in entries({filename: path.read_bytes()}, item['game'], strict=False)}
+                except (UnicodeError, OSError):
+                    pass
         origins = {}
         with self.service.connect() as db:
             history = {}
@@ -181,10 +198,12 @@ class ModCache:
                 row = cached_rows.get((entry['source_file'], entry['key'], digest(entry['text'])))
                 if row and request.valid_translation(entry['text'], row[0]):
                     translated += 1
+                    if local_entries.get(entry['source_file'], {}).get(canonical_key(entry['key'])) == row[0]:
+                        deployed += 1
                     origins[row[1]] = origins.get(row[1], 0) + 1
                 elif history.get((entry['source_file'], canonical_key(entry['key'])), set()) - {digest(entry['text'])}:
                     needs_update += 1
-        return {'total': len(current), 'translated': translated, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
+        return {'total': len(current) + len(issues), 'translated': translated, 'deployed': deployed, 'cached': translated - deployed, 'parse_errors': len(issues), 'issues': issues, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 
     def export(self, item):
         with self.service.connect() as db:

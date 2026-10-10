@@ -531,7 +531,7 @@ class WorkshopService:
         self.cache.sync_workspace(item, sources)
         item['counts'] = self.cache.stats(item, sources)
         item['scan_state'] = '已扫描'
-        self.log(f"{item['title']}：已翻译 {item['counts']['translated']} / 待翻译 {item['counts']['untranslated']}")
+        self.log(f"{item['title']}：已翻译 {item['counts']['deployed']} / 已缓存 {item['counts']['cached']} / 待翻译 {item['counts']['untranslated']} / 格式报错 {item['counts']['parse_errors']} 行")
         self.persist_item(item)
         self.save_completed()
         return {**item['counts'], **imported}
@@ -550,9 +550,11 @@ class WorkshopService:
         item['counts'] = self.cache.stats(item, sources)
         item['scan_state'] = '已扫描'
         self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条")
+        warning = '导入缓存无法检查 Steam 上尚未安装的原文更新；仅校验本机英文。无原文哈希的中文文件无法判断是否需要更新，请确认来源版本。'
+        self.log(warning)
         self.persist_item(item)
         self.save_completed()
-        return {**result, **item['counts'], 'provider': label}
+        return {**result, **item['counts'], 'provider': label, 'warning': warning}
 
     def translate(self, identifier, translator=None, deploy=True, provider=None):
         item = self.get_mod(identifier)
@@ -587,13 +589,16 @@ class WorkshopService:
             atomic_bytes(inputs / name, data)
         self.log(f"已复制 {len(sources)} 个英文文件到工作目录；开始翻译（复用匹配缓存）")
         failures = 0
+        issues = []
         translated = {}
         with tempfile.TemporaryDirectory(prefix='output-', dir=workspace) as staging_dir:
             staging = Path(staging_dir)
             for index, name in enumerate(sources, 1):
                 self.log(f'文件 {index}/{len(sources)}：{name}')
                 relative = Path(item['game']) / name
-                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator)
+                file_issues = []
+                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues)
+                issues.extend({**problem, 'file': name} for problem in file_issues)
                 output = staging / paradox.output_name(relative, item['game'])
                 data = output.read_bytes()
                 if not data.startswith(b'\xef\xbb\xbf'):
@@ -604,8 +609,7 @@ class WorkshopService:
             item['scan_state'] = '已扫描'
             self.persist_item(item)
             self.save_completed()
-            if failures:
-                raise ValueError(f'{failures} 条翻译失败，成功缓存已保存；未修改 Workshop 文件，点击开始AI翻译可重试')
+            atomic_bytes(workspace / 'translation-report.json', json.dumps({'error_lines': len(issues), 'issues': issues}, ensure_ascii=False, indent=2).encode('utf-8'))
             digest = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() for name, data in sorted(sources.items()))).hexdigest()
             with self.connect() as db:
                 cursor = db.execute('INSERT INTO versions(mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES (?,?,?,?,?,?,?,?,?)',
@@ -614,11 +618,18 @@ class WorkshopService:
         self.log(f'中文文件与英文原文已备份到 SQLite，版本 {version}')
         if deploy:
             self.restore(version, identifier)
+            item['counts'] = self.cache.stats(item, sources)
+        if issues:
+            with self.connect() as db:
+                db.execute('UPDATE versions SET status=? WHERE id=?', (f'{"已回写" if deploy else "已备份"}（{len(issues)} 行保留英文）', version))
         item['translated'] = True
         self.persist_item(item)
         self.save_completed()
         self.log('翻译完成 · 来源：' + label)
-        return {'version_id': version, 'files': len(translated), 'path': item['path'], 'workspace': str(workspace), 'provider': label}
+        for problem in issues:
+            self.log(f"{problem['file']}:{problem['line']}：{problem['reason']}")
+        self.log(f'任务结束：报错 {len(issues)} 行，已将对应英文原行保留在翻译文件中；完整明细：{workspace / "translation-report.json"}')
+        return {'version_id': version, 'files': len(translated), 'path': item['path'], 'workspace': str(workspace), 'provider': label, 'error_lines': len(issues), 'issues': issues}
 
     def restore(self, version_id, identifier):
         item = self.get_mod(identifier)

@@ -177,11 +177,17 @@ def output_name(local_path, game):
     path = Path(local_path)
     return path if game == 'eu4' else path.with_name(path.name.replace('l_english', 'l_simp_chinese'))
 
-def extract(path, mde):
+def extract(path, mde, issues=None):
     with Path(path).open(encoding='utf-8-sig', newline='') as source:
         entries = []
         for number, line in enumerate(source, 1):
-            match = checked_line(line, path, number)
+            try:
+                match = checked_line(line, path, number)
+            except LocalisationError:
+                if issues is None:
+                    raise
+                issues.append({'file': str(path), 'line': number, 'reason': '无法解析；已保留英文原行'})
+                continue
             if match:
                 if match['extra_quotes']:
                     import logging
@@ -225,13 +231,20 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None):
             lines.append(line)
     atomic_write(dst, ''.join(lines))
 
-def translate_para(local_path, mde, output_root=None, project_root=None, translator=None):
+def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None):
     import hashlib
     import json
     import logging
     project_root = Path(project_root) if project_root is not None else ROOT
     translator = translator or request.request_deepseek_batch
-    entries = extract(project_root / 'localisation' / local_path, mde)
+    entries = extract(project_root / 'localisation' / local_path, mde, issues=issues)
+    line_numbers = {}
+    if issues is not None:
+        with (project_root / 'localisation' / local_path).open(encoding='utf-8-sig') as stream:
+            for number, line in enumerate(stream, 1):
+                match = parse_line(line)
+                if match:
+                    line_numbers[match['prefix'].lstrip()] = number
     cache_path = project_root / 'already' / (str(local_path) + '.cache.json')
     try:
         cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
@@ -254,9 +267,14 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
     failures = 0
     for offset in range(0, len(pending), 150):
         keys = pending[offset:offset + 150]
-        results = translator([tran[key].word for key in keys], mde, successful, len(tran))
-        if len(results) != len(keys):
-            raise ValueError('请求结果数量与输入不一致')
+        try:
+            results = translator([tran[key].word for key in keys], mde, successful, len(tran))
+            if len(results) != len(keys):
+                raise ValueError('请求结果数量与输入不一致')
+        except ValueError:
+            if issues is None:
+                raise
+            results = [{'success': False, 'text': tran[key].word} for key in keys]
         for key, result in zip(keys, results):
             if result['success'] and request.valid_translation(tran[key].word, result['text']):
                 tran[key].word, tran[key].vis = result['text'], 1
@@ -264,6 +282,8 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
                 successful += 1
             else:
                 failures += 1
+                if issues is not None:
+                    issues.append({'file': str(local_path), 'line': line_numbers[key], 'reason': '翻译失败或返回格式异常；已保留英文'})
         # Save each completed segment independently of final publication.
         atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
     outputs(local_path, tran, mde, output_root, project_root)

@@ -39,3 +39,6 @@ htmlcov/
 /config.json
 /providers.json
 /completed.json
+
+# Recoverable local cleanup archive
+/.cleanup-archive/
