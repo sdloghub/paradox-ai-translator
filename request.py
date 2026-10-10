@@ -38,6 +38,10 @@ def findrule(game):
         rules_path = Path(__file__).resolve().parent / "rules.json"
         with rules_path.open("r", encoding="utf-8") as fi:
             _RULES_CACHE = json.load(fi)
+    if 'common' in _RULES_CACHE:
+        context = _RULES_CACHE.get('games', {}).get(game, {})
+        return (_RULES_CACHE['common'] + '\n\n当前游戏：' + context.get('name', game)
+                + '\n' + context.get('guidance', '根据原文背景选择词汇，编码由程序处理。'))
     return _RULES_CACHE[game]
 #print(findrule("st"))
 # Match script variables, game icons, colour/format tokens and literal escapes.

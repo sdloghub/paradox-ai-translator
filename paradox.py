@@ -150,15 +150,24 @@ def special_unescape(s, to_utf8, new_version):
 
 ROOT = Path(__file__).resolve().parent
 
+class LocalisationError(ValueError):
+    """A local file diagnostic safe to show without provider response bodies."""
+
 class Paradox_data:
     def __init__(self, key_w, word, vis):
         self.key_w, self.word, self.vis = key_w, word, vis
 
 # Preserve indentation, key/version, trailing comments and original line endings.
-ENTRY = re.compile(r'^(?P<prefix>\s*[^#\s][^"\r\n]*?:\s*\d*\s*)"(?P<text>(?:\\.|[^"\\])*)"(?P<suffix>[ \t]*(?:#[^\r\n]*)?)(?P<newline>\r?\n)?$')
+ENTRY = re.compile(r'^(?P<prefix>\s*[^#\s][^"\r\n]*?:\s*\d*\s*)"(?P<text>(?:\\.|[^"\\])*)"(?P<extra_quotes>"*)(?P<suffix>[ \t]*(?:#[^\r\n]*)?)(?P<newline>\r?\n)?$')
 
 def parse_line(line):
     return ENTRY.fullmatch(line)
+
+def checked_line(line, path, number):
+    match = parse_line(line)
+    if not match and not line.lstrip().startswith('#') and ':' in line and '"' in line:
+        raise LocalisationError(f"无法解析本地化条目：{path}:{number}；请检查闭合引号、转义和行尾内容")
+    return match
 
 def source_text(match, game):
     text = match['text']
@@ -172,11 +181,12 @@ def extract(path, mde):
     with Path(path).open(encoding='utf-8-sig', newline='') as source:
         entries = []
         for number, line in enumerate(source, 1):
-            match = parse_line(line)
+            match = checked_line(line, path, number)
             if match:
+                if match['extra_quotes']:
+                    import logging
+                    logging.warning('多余闭合引号将在中文输出中规范化：%s:%s', path, number)
                 entries.append((match['prefix'].lstrip(), source_text(match, mde)))
-            elif not line.lstrip().startswith('#') and ':' in line and '"' in line:
-                raise ValueError(f"无法解析本地化条目：{path}:{number}")
         return entries
 
 def atomic_write(path, text):

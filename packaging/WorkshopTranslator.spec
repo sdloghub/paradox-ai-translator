@@ -7,7 +7,9 @@ analysis = Analysis(
     datas=[(str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.'),
            (str(root / 'vendor'), 'vendor'), (str(root / 'assets'), 'assets')],
     hiddenimports=['paradox', 'request', 'openai', 'winreg', 'translation_cache', 'tkinter.filedialog'],
-    hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
+    hookspath=[], hooksconfig={}, runtime_hooks=[],
+    excludes=['pandas', 'numpy', 'scipy', 'matplotlib', 'PIL', 'IPython', 'torch', 'sympy'],
+    noarchive=False,
 )
 pyz = PYZ(analysis.pure)
 options = dict(name='WorkshopTranslator', icon=str(root / 'assets/app-icon.ico'), debug=False,

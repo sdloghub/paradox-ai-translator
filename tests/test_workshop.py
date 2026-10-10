@@ -17,6 +17,10 @@ class WorkshopTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.base = Path(self.temporary.name).resolve()
+        self.real_steam_libraries = app.steam_libraries
+        libraries = patch.object(app, 'steam_libraries', side_effect=lambda extra=(): [Path(p) for p in extra])
+        libraries.start()
+        self.addCleanup(libraries.stop)
         self.service = app.WorkshopService(self.base / 'data')
         self.library = self.base / 'SteamLibrary'
         self.mod = self.library / 'steamapps/workshop/content/394360/123456'
@@ -31,6 +35,17 @@ class WorkshopTests(unittest.TestCase):
         for item in items:
             self.service.analyze(item['id'])
         return items
+
+    def test_matching_workspace_cache_does_not_rewrite_file(self):
+        item = self.scan()[0]
+        sources = app.english_files(self.mod)
+        from translation_cache import ModCache
+        cache = ModCache(self.service)
+        workspace = cache.sync_workspace(item, sources)
+        path = next((workspace / 'already').rglob('*.cache.json'))
+        before = path.stat().st_mtime_ns
+        cache.sync_workspace(item, sources)
+        self.assertEqual(path.stat().st_mtime_ns, before)
 
     @staticmethod
     def translator(texts, game, already, total):
@@ -353,7 +368,12 @@ class WorkshopTests(unittest.TestCase):
         version = self.service.translate('394360:123456', self.translator, deploy=False)['version_id']
         outside = self.base / 'outside'
         outside.mkdir()
-        (self.mod / 'localisation/simp_chinese').symlink_to(outside, target_is_directory=True)
+        try:
+            (self.mod / 'localisation/simp_chinese').symlink_to(outside, target_is_directory=True)
+        except OSError as error:
+            if getattr(error, 'winerror', None) == 1314:
+                self.skipTest('Windows symlink privilege unavailable')
+            raise
         with self.assertRaisesRegex(ValueError, '超出 Mod'):
             self.service.restore(version, '394360:123456')
         self.assertEqual(list(outside.iterdir()), [])
@@ -392,7 +412,7 @@ class WorkshopTests(unittest.TestCase):
         config = installation / 'steamapps/libraryfolders.vdf'
         config.parent.mkdir(parents=True)
         config.write_text('"libraryfolders" { "1" { "path" "' + str(self.library) + '" } }')
-        self.assertIn(self.library, app.steam_libraries([str(installation)]))
+        self.assertIn(self.library, self.real_steam_libraries([str(installation)]))
 
     def write_manifest(self, installed=None, details=None):
         installed = installed if installed is not None else {'123456': {

@@ -14,11 +14,11 @@ def digest(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
-def entries(files, game):
+def entries(files, game, strict=True):
     result = []
     for filename, data in files.items():
-        for line in data.decode('utf-8-sig').splitlines(keepends=True):
-            match = paradox.parse_line(line)
+        for number, line in enumerate(data.decode('utf-8-sig').splitlines(keepends=True), 1):
+            match = paradox.checked_line(line, filename, number) if strict else paradox.parse_line(line)
             if match:
                 result.append({'source_file': filename, 'key': match['prefix'].lstrip(),
                                'text': paradox.source_text(match, game)})
@@ -63,7 +63,7 @@ def candidates(path, game):
             data = file.read_bytes()
             text = data.decode('utf-8-sig')
             chinese_header = bool(re.search(r'^\s*l_simp_chinese\s*:', text, re.M))
-            for entry in entries({str(file): data}, game):
+            for entry in entries({str(file): data}, game, strict=False):
                 if re.search(r'[\u3400-\u9fff]', entry['text']):
                     # English-headed files may already contain fully localized Chinese.
                     if chinese_header or game == 'eu4' or not re.search(r'[A-Za-z]{2,}', request.TOKENS.sub('', entry['text'])):
@@ -141,6 +141,8 @@ class ModCache:
     def sync_workspace(self, item, sources, origin='翻译缓存'):
         workspace = self.service.data_dir / 'workspaces' / item['appid'] / item['uid']
         with self.service.connect() as db:
+            cached_rows = {(f, k, h): t for f, k, h, t in db.execute(
+                'SELECT source_file,entry_key,source_hash,chinese FROM translation_entries WHERE mod_id=?', (item['id'],))}
             for name in sources:
                 path = workspace / 'already' / item['game'] / (name + '.cache.json')
                 existing = {}
@@ -151,17 +153,18 @@ class ModCache:
                         pass
                 if not isinstance(existing, dict):
                     existing = {}
+                before = json.dumps(existing, ensure_ascii=False, indent=2)
                 for entry in entries({name: sources[name]}, item['game']):
                     h = digest(entry['text'])
-                    row = db.execute('''SELECT chinese FROM translation_entries WHERE
-                        mod_id=? AND source_file=? AND entry_key=? AND source_hash=?''',
-                        (item['id'], name, entry['key'], h)).fetchone()
+                    text = cached_rows.get((name, entry['key'], h))
                     cached = existing.get(entry['key'], {})
-                    if row:
-                        existing[entry['key']] = {'source_hash': h, 'text': row[0]}
+                    if text is not None:
+                        existing[entry['key']] = {'source_hash': h, 'text': text}
                     elif isinstance(cached, dict) and cached.get('source_hash') == h and request.valid_translation(entry['text'], cached.get('text')):
                         self.put(db, item['id'], entry, cached['text'], origin)
-                paradox.atomic_write(path, json.dumps(existing, ensure_ascii=False, indent=2))
+                after = json.dumps(existing, ensure_ascii=False, indent=2)
+                if not path.exists() or before != after:
+                    paradox.atomic_write(path, after)
         return workspace
 
     def stats(self, item, sources):
@@ -170,12 +173,12 @@ class ModCache:
         origins = {}
         with self.service.connect() as db:
             history = {}
-            for filename, key, source_hash in db.execute('SELECT source_file,entry_key,source_hash FROM translation_entries WHERE mod_id=?', (item['id'],)):
+            cached_rows = {}
+            for filename, key, source_hash, chinese, origin in db.execute('SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=?', (item['id'],)):
                 history.setdefault((filename, canonical_key(key)), set()).add(source_hash)
+                cached_rows[(filename, key, source_hash)] = (chinese, origin)
             for entry in current:
-                row = db.execute('''SELECT chinese,origin FROM translation_entries WHERE
-                    mod_id=? AND source_file=? AND entry_key=? AND source_hash=?''',
-                    (item['id'], entry['source_file'], entry['key'], digest(entry['text']))).fetchone()
+                row = cached_rows.get((entry['source_file'], entry['key'], digest(entry['text'])))
                 if row and request.valid_translation(entry['text'], row[0]):
                     translated += 1
                     origins[row[1]] = origins.get(row[1], 0) + 1
