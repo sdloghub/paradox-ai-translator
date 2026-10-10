@@ -157,6 +157,7 @@ class WorkshopTests(unittest.TestCase):
         self.scan()
         self.service.save_config({'provider': '供应商', 'api_key': 'fake-secret'})
         self.service.translate('394360:123456', self.translator)
+        self.service.completed_path.unlink()  # Package can recover markers from an older local database.
         exe = self.base / 'test.exe'
         exe.write_bytes(b'MZtest')
         package = module.build_release(self.base / 'release.zip', self.service.data_dir, exe)

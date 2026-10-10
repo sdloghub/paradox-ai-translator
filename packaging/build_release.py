@@ -2,6 +2,8 @@
 import argparse
 import hashlib
 import json
+import os
+import sqlite3
 from pathlib import Path
 import sys
 import zipfile
@@ -20,7 +22,10 @@ def sanitized(value):
 
 def build_release(destination=None, data_dir=None, executable=None):
     import workshop_app
-    data_dir = Path(data_dir or ROOT / 'app_data')
+    saved = ROOT / 'app_data'
+    if os.name == 'nt' and not saved.is_dir():
+        saved = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'WorkshopTranslator/app_data'
+    data_dir = Path(data_dir or saved).resolve()
     destination = Path(destination or ROOT / 'dist/WorkshopTranslator-Windows.zip')
     executable = Path(executable or ROOT / 'dist/WorkshopTranslator.exe')
     if not executable.is_file():
@@ -33,6 +38,15 @@ def build_release(destination=None, data_dir=None, executable=None):
     for name, target in [('providers.json', profiles), ('completed.json', completed)]:
         if (data_dir / name).is_file():
             target.update(json.loads((data_dir / name).read_text(encoding='utf-8')))
+    database = data_dir / 'translations.sqlite3'
+    if database.is_file():
+        connection = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)
+        try:
+            connection.row_factory = sqlite3.Row
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='translation_entries'").fetchone():
+                completed['entries'] = [dict(row) for row in connection.execute('SELECT * FROM translation_entries')]
+        finally:
+            connection.close()
     files = ['workshop_app.py', 'paradox.py', 'request.py', 'translation_cache.py',
              'workshop_ui.html', 'rules.json', 'requirements.txt', 'Windows使用说明.md', 'README.md']
     files += [str(p.relative_to(ROOT)) for folder in ('vendor', 'assets', 'packaging')
