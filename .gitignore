@@ -34,3 +34,8 @@ htmlcov/
 /build/
 /dist/
 /.venv-build/
+
+# Portable runtime configuration and completion mappings
+/config.json
+/providers.json
+/completed.json

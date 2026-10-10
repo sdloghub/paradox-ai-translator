@@ -34,14 +34,14 @@ powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
 仓库包含 `.github/workflows/build-windows.yml`。
 在独立 `codex/windows-exe...` 分支推送打包源码时自动运行，或从 Actions 页面手动启动。
 构建环境是 Windows x64；先运行测试，再生成 EXE 并执行 `--self-test` 离线端到端自检。
-成功后下载 `WorkshopTranslator-Windows-x64` artifact，其中包含 EXE 和 SHA-256 校验文件。
+成功后下载 `WorkshopTranslator-Windows-x64` artifact，其中包含程序发布 ZIP、EXE 和 SHA-256 校验文件。
 只上传必要源码与配置，不包含本机 API 密钥、Mod、数据库或翻译缓存。
 
 macOS 上运行 PyInstaller 不能生成 Windows EXE，因此最终编译和运行验证必须在 Windows 上执行。
 
 ## 中文扫描与缓存
 
-扫描会按游戏分类，并为每个 Mod 提取本机中文，显示已翻译、待翻译和总条目数。
+目录刷新后选择具体 Mod 扫描，显示已翻译、未翻译、需更新及总条目数。
 预览区“打开 Steam 网页窗口”使用命名浏览器窗口；再次点击会复用该窗口并跳转到当前 Mod。
 Steam 自身的浏览器隔离策略或弹窗拦截可能要求浏览器允许打开窗口。
 
@@ -54,8 +54,18 @@ Steam 自身的浏览器隔离策略或弹窗拦截可能要求浏览器允许�
 后续检测能识别英文变化并阻止未变化的旧中文被重新标记为新译文。
 来自另一个 Mod、原文哈希不一致、变量损坏、同键多文件无法唯一对应或存在冲突的译文会跳过。
 
-### 游戏分类与本地清单
+### 游戏分类、扫描与来源
 
-搜索栏下方按游戏切换，点击分类后才显示对应 Mod。清单与翻译统计保存到本地 SQLite，重启直接加载；点击「扫描更新」时对文件名及内容计算 SHA-256，只有新增、变化或上次检测失败的 Mod 重新分析，Steam 名称查询仅针对新增、变化或上次查询失败的记录。已卸载的 Mod 从当前清单移除，翻译备份仍保留。
+点击搜索栏下方的游戏分类后显示对应 Mod。「刷新目录」只读取目录、描述文件及 Steam 清单，不递归读取模组内容。首次显示「未扫描」；进入具体 Mod 后点击「扫描此 Mod」，才提取中文并校验英文 SHA-256。名称查询针对新增、目录清单变化或上次查询失败的记录。本机清单重启后直接加载。
 
-扫描仍需要读取本机文件以确认内容变化，大型 Mod 首次或再次校验可能耗时；不会重复发送未变化 Mod 的名称查询。Steam 页面单独改名而本地文件不变时，名称继续使用缓存。重新检测中文、导入缓存和翻译后的统计也会保存。界面动效库随程序打包，离线可用，并遵循系统减少动态效果设置。
+目录元数据无法发现所有深层文件修改，因此使用旧扫描结果时仍建议扫描所选 Mod；已发现目录变化的旧结果标注「待复查」。扫描后显示总条目、已翻译、未翻译、需更新；需更新表示同一条目已有旧译文但原文不匹配。API 待处理数量为未翻译与需更新之和。
+
+API 设置填写提供商名称，配置保存在本机 config.json 与 providers.json。手动导入也可填写汉化组或译者名称。留空时按「翻译-日期-版次」命名，版次持续累加。来源按有效条目汇总，补充翻译不会改写原有导入来源。completed.json 保存译文及原文哈希的完成标记，后续操作更新已有文件。SQLite 继续保存完整备份。
+
+### 程序发布压缩包
+
+每次打包生成 dist/WorkshopTranslator-Windows.zip。解压后的 WorkshopTranslator 文件夹内，EXE、Python 工具、config.json、providers.json、completed.json 并列，资源位于 assets/vendor。发布包 API Key 留空；本机保存的密钥保留原值。
+
+运行 `python packaging/build_release.py --data-dir app_data` 会复制指定数据目录的最新配置与完成记录，更新已有发布 ZIP。首次运行读取包内配置；已有本机保存时保留现有配置，完成标记按英文哈希合并。Windows 数据仍保存于 %LOCALAPPDATA%/WorkshopTranslator/app_data/。完整历史备份以本机数据库为准，JSON 完成标记用于恢复缓存。
+
+GitHub 构建只使用空配置模板，不上传本机密钥、Mod、数据库或完成记录。Steam 投稿仅预留界面和本机接口，显示「尚未启用」，不会上传内容。

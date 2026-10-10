@@ -27,7 +27,10 @@ class WorkshopTests(unittest.TestCase):
         self.service.save_config({'steam_libraries': [str(self.library)]})
 
     def scan(self):
-        return self.service.scan(lambda ids: {'123456': {'title': 'Workshop title', 'consumer_app_id': 394360}})
+        items = self.service.scan(lambda ids: {'123456': {'title': 'Workshop title', 'consumer_app_id': 394360}})
+        for item in items:
+            self.service.analyze(item['id'])
+        return items
 
     @staticmethod
     def translator(texts, game, already, total):
@@ -50,7 +53,7 @@ class WorkshopTests(unittest.TestCase):
             result = restarted.scan(lambda ids: self.fail('unchanged should not fetch'))
         self.assertEqual(result[0]['title'], 'Workshop title')
 
-    def test_scan_detects_same_size_content_change_with_preserved_timestamp(self):
+    def test_directory_refresh_skips_deep_content_even_if_it_changed(self):
         self.scan()
         previous = self.source.stat()
         self.source.write_text(self.source.read_text().replace('Alpha', 'Gamma'))
@@ -60,8 +63,9 @@ class WorkshopTests(unittest.TestCase):
             calls.extend(ids)
             return {'123456': {'title': 'Updated title', 'consumer_app_id': 394360}}
         self.service.scan(fetch)
-        self.assertEqual(calls, ['123456'])
-        self.assertEqual(self.service.inventory['394360:123456']['title'], 'Updated title')
+        self.assertEqual(calls, [])
+        self.assertEqual(self.service.inventory['394360:123456']['title'], 'Workshop title')
+        self.assertEqual(self.service.analyze('394360:123456')['untranslated'], 1)
 
     def test_scan_queries_only_new_and_changed_mods_and_removes_uninstalled(self):
         self.scan()
@@ -96,6 +100,94 @@ class WorkshopTests(unittest.TestCase):
         self.assertEqual(self.service.inventory['394360:123456']['counts']['translated'], 1)
         restarted = app.WorkshopService(self.service.data_dir)
         self.assertEqual(restarted.inventory['394360:123456']['counts']['translated'], 1)
+
+    def test_initial_directory_refresh_does_not_read_mod_content(self):
+        with patch.object(app, 'english_files', side_effect=AssertionError('content read forbidden')), patch.object(self.service, 'analyze', side_effect=AssertionError('analysis forbidden')):
+            item = self.service.scan(lambda ids: {})[0]
+        self.assertNotIn('counts', item)
+        self.assertEqual(item['scan_state'], '未扫描')
+        self.assertEqual(self.service.analyze(item['id'])['untranslated'], 1)
+        self.assertEqual(item['scan_state'], '已扫描')
+
+    def test_provider_profiles_persist_privately(self):
+        self.service.save_config({'provider': '测试提供商', 'api_key': 'fake-secret'})
+        registry = json.loads(self.service.providers_path.read_text())
+        self.assertEqual(registry['profiles']['测试提供商']['api_key'], 'fake-secret')
+        self.assertEqual(self.service.public_config()['provider'], '测试提供商')
+        self.assertNotIn('api_key', self.service.public_config())
+
+    def test_ai_and_imported_origins_are_preserved_separately(self):
+        second = self.source.parent / 'second_l_english.yml'
+        second.write_text('l_english:\n other:0 "Beta $VALUE$"\n')
+        item = self.service.scan(lambda ids: {})[0]
+        external = self.base / 'import.yml'
+        external.write_text('l_simp_chinese:\n key:0 "甲 $VALUE$"\n')
+        imported = self.service.import_cache(item['id'], external, '人工汉化组')
+        self.assertEqual(imported['provider'], '人工汉化组')
+        self.service.save_config({'provider': '模型供应商'})
+        self.service.translate(item['id'], self.translator)
+        self.assertEqual({origin['name'] for origin in item['counts']['origins']}, {'导入 · 人工汉化组', 'AI · 模型供应商'})
+        self.assertEqual(self.service.history()[0]['provider'], '模型供应商')
+        marker = json.loads(self.service.completed_path.read_text())
+        self.assertEqual(len(marker['entries']), 2)
+
+    def test_untranslated_and_changed_entries_are_distinguished(self):
+        item = self.scan()[0]
+        self.service.translate(item['id'], self.translator)
+        self.source.write_text('l_english:\n key:0 "Beta $VALUE$"\n new:0 "Gamma"\n')
+        result = self.service.analyze(item['id'])
+        self.assertEqual(result['translated'], 0)
+        self.assertEqual(result['untranslated'], 2)
+        self.assertEqual(result['needs_update'], 1)
+
+    def test_empty_provider_gets_date_and_persistent_revision(self):
+        first = self.service.source_label('导入')
+        restarted = app.WorkshopService(self.service.data_dir)
+        second = restarted.source_label('AI')
+        self.assertRegex(first, r'^翻译-\d{4}-\d{2}-\d{2}-1$')
+        self.assertTrue(second.endswith('-2'))
+
+    def test_release_package_copies_settings_and_markers_but_redacts_keys(self):
+        import importlib.util
+        import zipfile
+        spec = importlib.util.spec_from_file_location('release_builder', ROOT / 'packaging/build_release.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.scan()
+        self.service.save_config({'provider': '供应商', 'api_key': 'fake-secret'})
+        self.service.translate('394360:123456', self.translator)
+        exe = self.base / 'test.exe'
+        exe.write_bytes(b'MZtest')
+        package = module.build_release(self.base / 'release.zip', self.service.data_dir, exe)
+        with zipfile.ZipFile(package) as archive:
+            config = json.loads(archive.read('WorkshopTranslator/config.json'))
+            registry = json.loads(archive.read('WorkshopTranslator/providers.json'))
+            completed = json.loads(archive.read('WorkshopTranslator/completed.json'))
+            self.assertEqual(config['api_key'], '')
+            self.assertEqual(registry['profiles']['供应商']['api_key'], '')
+            self.assertEqual(len(completed['entries']), 1)
+            self.assertIn('WorkshopTranslator/workshop_app.py', archive.namelist())
+        self.service.save_config({'model': 'updated-model'})
+        module.build_release(package, self.service.data_dir, exe)
+        with zipfile.ZipFile(package) as archive:
+            self.assertEqual(json.loads(archive.read('WorkshopTranslator/config.json'))['model'], 'updated-model')
+
+    def test_portable_completion_seed_merges_without_overwriting_local_settings(self):
+        self.scan()
+        self.service.translate('394360:123456', self.translator)
+        bundle = self.base / 'bundle'
+        bundle.mkdir()
+        (bundle / 'completed.json').write_bytes(self.service.completed_path.read_bytes())
+        (bundle / 'config.json').write_text(json.dumps({**app.DEFAULT_CONFIG, 'provider': '种子提供商'}))
+        (bundle / 'providers.json').write_bytes(self.service.providers_path.read_bytes())
+        with patch.object(app, 'ROOT', bundle):
+            fresh = app.WorkshopService(self.base / 'seed-data')
+            self.assertEqual(fresh.config()['provider'], '种子提供商')
+            with fresh.connect() as db:
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM translation_entries').fetchone()[0], 1)
+            fresh.save_config({'provider': '本机提供商'})
+            again = app.WorkshopService(fresh.data_dir)
+            self.assertEqual(again.config()['provider'], '本机提供商')
 
     def test_offline_scan_uses_descriptor(self):
         def unavailable(ids):

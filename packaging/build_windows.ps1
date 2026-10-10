@@ -15,4 +15,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Executable build failed.' }
 & '.\dist\WorkshopTranslator.exe' --self-test
 if ($LASTEXITCODE -ne 0) { throw 'Packaged executable self-test failed.' }
-Write-Host 'Completed: dist/WorkshopTranslator.exe'
+& $python packaging/build_release.py
+if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed.' }
+Write-Host 'Completed: dist/WorkshopTranslator-Windows.zip'

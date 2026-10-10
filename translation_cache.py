@@ -138,7 +138,7 @@ class ModCache:
                     rejected += 1
         return {'imported': imported, 'rejected': rejected}
 
-    def sync_workspace(self, item, sources):
+    def sync_workspace(self, item, sources, origin='翻译缓存'):
         workspace = self.service.data_dir / 'workspaces' / item['appid'] / item['uid']
         with self.service.connect() as db:
             for name in sources:
@@ -160,21 +160,25 @@ class ModCache:
                     if row:
                         existing[entry['key']] = {'source_hash': h, 'text': row[0]}
                     elif isinstance(cached, dict) and cached.get('source_hash') == h and request.valid_translation(entry['text'], cached.get('text')):
-                        self.put(db, item['id'], entry, cached['text'], '翻译缓存')
+                        self.put(db, item['id'], entry, cached['text'], origin)
                 paradox.atomic_write(path, json.dumps(existing, ensure_ascii=False, indent=2))
         return workspace
 
     def stats(self, item, sources):
         current = entries(sources, item['game'])
-        translated = 0
+        translated = needs_update = 0
+        origins = {}
         with self.service.connect() as db:
             for entry in current:
-                row = db.execute('''SELECT chinese FROM translation_entries WHERE
+                row = db.execute('''SELECT chinese,origin FROM translation_entries WHERE
                     mod_id=? AND source_file=? AND entry_key=? AND source_hash=?''',
                     (item['id'], entry['source_file'], entry['key'], digest(entry['text']))).fetchone()
                 if row and request.valid_translation(entry['text'], row[0]):
                     translated += 1
-        return {'total': len(current), 'translated': translated, 'untranslated': len(current) - translated, 'files': len(sources)}
+                    origins[row[1]] = origins.get(row[1], 0) + 1
+                elif db.execute('SELECT 1 FROM translation_entries WHERE mod_id=? AND source_file=? AND entry_key=? LIMIT 1', (item['id'], entry['source_file'], entry['key'])).fetchone():
+                    needs_update += 1
+        return {'total': len(current), 'translated': translated, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 
     def export(self, item):
         with self.service.connect() as db:
