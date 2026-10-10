@@ -195,6 +195,32 @@ class WorkshopTests(unittest.TestCase):
             again = app.WorkshopService(fresh.data_dir)
             self.assertEqual(again.config()['provider'], '本机提供商')
 
+    def test_handoff_contains_source_context_and_release_and_rejects_secrets(self):
+        import importlib.util
+        import zipfile
+        spec = importlib.util.spec_from_file_location('handoff_builder', ROOT / 'packaging/build_handoff.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        release = self.base / 'program.zip'
+        def write_release(key=''):
+            with zipfile.ZipFile(release, 'w') as archive:
+                for name in ('config.json', 'providers.json', 'completed.json'):
+                    archive.writestr('WorkshopTranslator/' + name, json.dumps({'api_key': key}))
+        write_release()
+        destination = self.base / 'handoff.zip'
+        module.build_handoff(destination, release)
+        original = destination.read_bytes()
+        with zipfile.ZipFile(destination) as archive:
+            names = archive.namelist()
+            self.assertIn('WorkshopTranslator-Handoff/source/tests/test_workshop.py', names)
+            self.assertIn('WorkshopTranslator-Handoff/source/交接说明.md', names)
+            self.assertEqual(archive.read('WorkshopTranslator-Handoff/Windows/WorkshopTranslator-Windows.zip'), release.read_bytes())
+            self.assertFalse(any('/app_data' in name or '/.git/' in name or name.endswith('.sqlite3') for name in names))
+        write_release('fake-secret')
+        with self.assertRaises(ValueError):
+            module.build_handoff(destination, release)
+        self.assertEqual(destination.read_bytes(), original)
+
     def test_switch_saved_profiles_uses_matching_key_and_preserves_libraries(self):
         self.service.save_config({'config_name': '日常翻译', 'provider': '提供商', 'model': 'model-a', 'api_key': 'key-a'})
         self.service.save_config({'config_name': '精校模型', 'provider': '提供商', 'model': 'model-b', 'api_key': 'key-b'})
@@ -367,6 +393,114 @@ class WorkshopTests(unittest.TestCase):
         config.parent.mkdir(parents=True)
         config.write_text('"libraryfolders" { "1" { "path" "' + str(self.library) + '" } }')
         self.assertIn(self.library, app.steam_libraries([str(installation)]))
+
+    def write_manifest(self, installed=None, details=None):
+        installed = installed if installed is not None else {'123456': {
+            'size': '54223092', 'timeupdated': '1786173367', 'manifest': '7118271464932829424'}}
+        details = details if details is not None else {'123456': {
+            'manifest': '7118271464932829424', 'timeupdated': '1786173367',
+            'timetouched': '1782720285', 'subscribedby': '1225308195',
+            'latest_timeupdated': '1786173367', 'latest_manifest': '7118271464932829424'}}
+        def dump(value):
+            if isinstance(value, dict):
+                return '{\n' + '\n'.join(json.dumps(k) + ' ' + dump(v) for k, v in value.items()) + '\n}'
+            return json.dumps(value)
+        manifest = self.library / 'steamapps/workshop/appworkshop_394360.acf'
+        manifest.write_text('\ufeff// Steam metadata\n' + dump({'AppWorkshop': {
+            'appid': '394360', 'WorkshopItemsInstalled': installed, 'WorkshopItemDetails': details}})[1:-1], encoding='utf-8')
+        return manifest
+
+    def test_acf_is_authoritative_and_read_once_without_directory_enumeration(self):
+        manifest = self.write_manifest(details={'9999': {'latest_manifest': '2'}})
+        extra = self.mod.parent / '9999'
+        extra.mkdir()
+        actual_read, actual_iter = Path.read_text, Path.iterdir
+        reads = []
+        def read(path, *args, **kwargs):
+            if path == manifest:
+                reads.append(path)
+            return actual_read(path, *args, **kwargs)
+        def iterate(path):
+            if path == self.mod.parent:
+                raise AssertionError('valid ACF must not enumerate game Mod directory')
+            return actual_iter(path)
+        with patch.object(Path, 'read_text', read), patch.object(Path, 'iterdir', iterate), patch.object(app, 'english_files', side_effect=AssertionError('no content scan')):
+            result = self.service.scan(lambda ids: {})
+        self.assertEqual([row['uid'] for row in result], ['123456'])
+        self.assertEqual(reads, [manifest])
+        self.assertEqual(result[0]['workshop']['manifest'], '7118271464932829424')
+        self.assertEqual(result[0]['discovery_source'], 'Steam ACF')
+        self.assertEqual(result[0]['scan_state'], '未扫描')
+
+    def test_acf_touch_and_subscriber_and_local_write_do_not_invalidate_installed_version(self):
+        self.write_manifest()
+        self.scan()
+        (self.mod / 'new-local-file.txt').write_text('local output')
+        (self.mod / 'descriptor.mod').write_text('name="Updated descriptor"')
+        self.write_manifest(details={'123456': {'timetouched': '9999999999', 'subscribedby': '42'}})
+        restarted = app.WorkshopService(self.service.data_dir)
+        result = restarted.scan(lambda ids: self.fail('unchanged installed version should not fetch'))
+        self.assertEqual(result[0]['scan_state'], '已扫描')
+        self.assertEqual(result[0]['counts']['total'], 1)
+
+    def test_acf_installed_version_queries_only_changed_item_and_marks_counts_stale(self):
+        first = {'size': '1', 'timeupdated': '1', 'manifest': '7118271464932829424'}
+        second = {'size': '2', 'timeupdated': '2', 'manifest': '7118271464932829425'}
+        (self.mod.parent / '9999').mkdir()
+        self.write_manifest(installed={'123456': first, '9999': second}, details={})
+        self.service.scan(lambda ids: {uid: {'title': uid, 'consumer_app_id': '394360'} for uid in ids})
+        self.service.analyze('394360:123456')
+        self.write_manifest(installed={'123456': {**first, 'manifest': '7118271464932829426'}, '9999': second}, details={})
+        calls = []
+        result = self.service.scan(lambda ids: calls.append(ids) or {uid: {'title': uid, 'consumer_app_id': '394360'} for uid in ids})
+        self.assertEqual(calls, [['123456']])
+        self.assertEqual(next(row for row in result if row['uid'] == '123456')['scan_state'], '待复查')
+
+    def test_acf_latest_version_change_is_pending_without_relabeling_local_counts(self):
+        self.write_manifest()
+        self.scan()
+        self.write_manifest(details={'123456': {'latest_manifest': '7118271464932829425', 'latest_timeupdated': '1786173368'}})
+        row = self.service.scan(lambda ids: self.fail('remote-only change does not change installed version'))[0]
+        self.assertTrue(row['steam_update_pending'])
+        self.assertEqual(row['scan_state'], '已扫描')
+        self.write_manifest()
+        self.assertFalse(self.service.scan(lambda ids: self.fail('unchanged'))[0]['steam_update_pending'])
+
+    def test_empty_acf_removes_inventory_even_if_old_directory_remains_and_preserves_backups(self):
+        self.write_manifest()
+        self.scan()
+        self.service.translate('394360:123456', self.translator)
+        self.write_manifest(installed={}, details={'123456': {'latest_manifest': '1'}})
+        self.assertEqual(self.service.scan(lambda ids: self.fail('empty installed list')), [])
+        self.assertEqual(app.WorkshopService(self.service.data_dir).inventory, {})
+        self.assertEqual(len(self.service.history()), 1)
+
+    def test_acf_unfinished_write_falls_back_instead_of_removing_mod(self):
+        manifest = self.write_manifest()
+        manifest.write_text('"AppWorkshop" { "WorkshopItemsInstalled" {')
+        row = self.service.scan(lambda ids: {})[0]
+        self.assertEqual(row['discovery_source'], '目录回退')
+        self.assertTrue(any('ACF 暂不可读' in line for line in self.service.status()['messages']))
+
+    def test_acf_path_missing_and_symlink_and_details_only_items_are_not_installed(self):
+        record = {'size': '1', 'timeupdated': '1', 'manifest': '1'}
+        outside = self.base / 'outside'
+        outside.mkdir()
+        linked = self.mod.parent / '9999'
+        try:
+            linked.symlink_to(outside, target_is_directory=True)
+        except OSError:
+            pass  # Windows runners may not grant symlink creation privileges.
+        self.write_manifest(installed={'123456': record, '9999': record, '8888': record}, details={'7777': {'latest_manifest': '1'}})
+        self.assertEqual([row['uid'] for row in self.service.scan(lambda ids: {})], ['123456'])
+
+    def test_keyvalues_nested_escaped_strings_and_rejects_incomplete_or_duplicate_keys(self):
+        parsed = app.parse_keyvalues('"AppWorkshop" { "note" "a \\"quote\\" and {brace}" "nested" { "id" "7118271464932829424" } }')
+        self.assertEqual(parsed['AppWorkshop']['note'], 'a "quote" and {brace}')
+        self.assertEqual(parsed['AppWorkshop']['nested']['id'], '7118271464932829424')
+        for text in ('"AppWorkshop" {', '"a" "1" "a" "2"', '"a" }', '"a" "b" extra'):
+            with self.assertRaises(ValueError):
+                app.parse_keyvalues(text)
 
     def test_unsafe_archive_paths_rejected(self):
         with self.assertRaises(ValueError):

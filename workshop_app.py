@@ -231,6 +231,9 @@ class WorkshopService:
             atomic_bytes(mod / 'descriptor.mod', b'name="Workshop Translation Demo"\n')
             atomic_bytes(mod / 'localisation/english/demo_l_english.yml',
                          b'\xef\xbb\xbfl_english:\n demo_title:0 "A new beginning"\n demo_desc:0 "Gain $VALUE$ political power."\n')
+        manifest = mod.parents[1].parent / 'appworkshop_394360.acf'
+        if not manifest.exists():
+            atomic_bytes(manifest, b'"AppWorkshop" { "appid" "394360" "WorkshopItemsInstalled" { "1000000001" { "size" "100" "timeupdated" "1" "manifest" "1" } } "WorkshopItemDetails" { "1000000001" { "latest_manifest" "1" "latest_timeupdated" "1" } } }')
         self.save_config({'steam_libraries': [str(self.data_dir / 'demo_steam')]})
 
     @staticmethod
@@ -341,42 +344,58 @@ class WorkshopService:
             return dict(self.job)
 
     def scan(self, fetch=workshop_details):
-        found = {}
+        found, fingerprints = {}, {}
         libraries = ([self.data_dir / 'demo_steam'] if self.demo else steam_libraries(self.config()['steam_libraries']))
         for library in libraries:
             content = library / 'steamapps/workshop/content'
             for appid, (game, game_title) in GAMES.items():
                 folder = content / appid
-                if not folder.is_dir():
+                if not folder.is_dir() or folder.is_symlink():
                     continue
-                for path in sorted(folder.iterdir()):
-                    if path.is_dir() and not path.is_symlink() and path.name.isdigit():
+                installed, reason = installed_workshop_items(library, appid)
+                if installed is None:
+                    self.log(f'{game_title}：{reason}，使用目录回退')
+                    paths = sorted(folder.iterdir())
+                else:
+                    paths = [folder / uid for uid in sorted(installed)]
+                for path in paths:
+                    if path.is_dir() and not path.is_symlink() and re.fullmatch(r'[0-9]+', path.name):
                         uid = path.name
                         identifier = f'{appid}:{uid}'
+                        record = installed[uid] if installed is not None else {}
+                        fingerprints[identifier] = (installed_stamp(record) if installed is not None
+                                                     else directory_stamp(path))
                         found[identifier] = {'id': identifier, 'uid': uid, 'appid': appid, 'game': game,
-                                             'game_title': game_title, 'title': local_title(path, uid),
+                                             'game_title': game_title, 'title': f'Mod {uid}',
                                              'path': str(path.resolve()),
                                              'url': f'https://steamcommunity.com/sharedfiles/filedetails/?id={uid}',
-                                             'name_source': '本地描述文件', 'translated': False}
+                                             'name_source': '本地描述文件', 'translated': False,
+                                             'discovery_source': 'Steam ACF' if installed is not None else '目录回退',
+                                             'workshop': record,
+                                             'steam_update_pending': workshop_update_pending(record)}
         with self.connect() as db:
             snapshots = {row[0]: row[1:] for row in db.execute(
                 'SELECT mod_id,fingerprint,metadata_ok,item_json FROM scan_snapshots')}
-        fingerprints, pending = {}, []
+        pending = []
         for identifier, item in found.items():
-            # Directory/Steam manifest metadata only: no recursive file reads.
-            fingerprints[identifier] = directory_stamp(Path(item['path']), library_manifest(item['path'], item['appid'], item['uid']))
             cached = snapshots.get(identifier)
             old = json.loads(cached[2]) if cached else {}
             unchanged = cached and cached[0] == fingerprints[identifier] and old['path'] == item['path']
             if old and old['path'] == item['path']:
+                # Keep prior counts/title, but always use this refresh's ACF data.
+                fresh = dict(item)
                 item.update(old)
+                item.update({key: value for key, value in fresh.items()
+                             if key not in ('title', 'name_source', 'translated')})
                 if not unchanged:
                     item['scan_state'] = '待复查' if old.get('counts') else '未扫描'
             else:
                 item['scan_state'] = '未扫描'
             if not unchanged or not cached[1]:
+                if not old:
+                    item['title'] = local_title(Path(item['path']), item['uid'])
                 pending.append(identifier)
-        self.log(f'目录刷新：发现 {len(found)} 个 Mod，未读取模组内容；选择 Mod 后可扫描')
+        self.log(f'清单刷新：发现 {len(found)} 个本机 Mod，优先读取 Steam ACF；未读取翻译内容')
         try:
             details = fetch(list(dict.fromkeys(found[key]['uid'] for key in pending))) if pending and not self.demo else {}
         except Exception:
@@ -647,15 +666,105 @@ class WorkshopService:
         return {'files': len(files), 'path': str(mod), 'version_id': int(version_id)}
 
 
-def library_manifest(path, appid, uid):
-    mod = Path(path)
-    manifest = mod.parents[1].parent / f'appworkshop_{appid}.acf'
-    if not manifest.is_file():
-        return ''
-    # Only include this item's flat Steam metadata, not other mods' timestamps.
-    text = manifest.read_text(encoding='utf-8', errors='replace')
-    blocks = re.findall(r'"' + re.escape(uid) + r'"\s*\{([^{}]*)\}', text)
-    return '\n'.join(blocks)
+def parse_keyvalues(text):
+    """Parse nested Steam text KeyValues without losing 64-bit manifest strings."""
+    token = re.compile(r'\s+|//[^\r\n]*|"(?:\\.|[^"\\])*"|[{}]')
+    tokens, offset = [], 0
+    text = text.lstrip('\ufeff')
+    while offset < len(text):
+        match = token.match(text, offset)
+        if not match:
+            raise ValueError('ACF 包含无效内容')
+        value = match.group()
+        offset = match.end()
+        if value.isspace() or value.startswith('//'):
+            continue
+        tokens.append(value)
+    index = 0
+
+    def string(value):
+        return re.sub(r'\\(["\\])', r'\1', value[1:-1])
+
+    def block(nested=False, depth=0):
+        nonlocal index
+        if depth > 32:
+            raise ValueError('ACF 嵌套过深')
+        result = {}
+        while index < len(tokens):
+            key = tokens[index]
+            index += 1
+            if key == '}':
+                if nested:
+                    return result
+                raise ValueError('ACF 大括号不匹配')
+            if not key.startswith('"') or index >= len(tokens):
+                raise ValueError('ACF 键值不完整')
+            key = string(key)
+            if key in result:
+                raise ValueError('ACF 包含重复键')
+            value = tokens[index]
+            index += 1
+            if value == '{':
+                result[key] = block(True, depth + 1)
+            elif value.startswith('"'):
+                result[key] = string(value)
+            else:
+                raise ValueError('ACF 键值不完整')
+        if nested:
+            raise ValueError('ACF 文件未写完整')
+        return result
+
+    return block()
+
+
+def installed_workshop_items(library, appid):
+    """Read each game's ACF once. None means fallback; an empty dict is authoritative."""
+    manifest = library / 'steamapps/workshop' / f'appworkshop_{appid}.acf'
+    if not manifest.is_file() or manifest.is_symlink():
+        return None, 'ACF 清单缺失'
+    try:
+        root = parse_keyvalues(manifest.read_text(encoding='utf-8-sig'))['AppWorkshop']
+        if not isinstance(root, dict) or root.get('appid', appid) != appid:
+            raise ValueError('ACF 游戏 ID 不匹配')
+        installed = root['WorkshopItemsInstalled']
+        details = root.get('WorkshopItemDetails', {})
+        if not isinstance(installed, dict) or not isinstance(details, dict):
+            raise ValueError('ACF 安装清单格式错误')
+        records = {}
+        for uid, item in installed.items():
+            if not re.fullmatch(r'[0-9]+', uid) or not isinstance(item, dict):
+                raise ValueError('ACF 物品格式错误')
+            record = {}
+            for field in ('manifest', 'timeupdated', 'size'):
+                value = item.get(field, '')
+                if not isinstance(value, str) or not re.fullmatch(r'[0-9]+', value):
+                    raise ValueError('ACF 安装信息不完整')
+                record[field] = value
+            latest = details.get(uid, {})
+            if not isinstance(latest, dict):
+                raise ValueError('ACF 详情格式错误')
+            for field in ('latest_manifest', 'latest_timeupdated'):
+                value = latest.get(field, '')
+                if not isinstance(value, str) or (value and not re.fullmatch(r'[0-9]+', value)):
+                    raise ValueError('ACF 最新版本信息错误')
+                record[field] = value
+            records[uid] = record
+        return records, ''
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        # Steam may currently be rewriting the file. Do not treat it as uninstall.
+        return None, 'ACF 暂不可读或格式不完整'
+
+
+def installed_stamp(record):
+    # latest/touched/subscriber changes do not mean the local content changed.
+    values = ['acf-installed-v1', record['manifest'], record['timeupdated'], record['size']]
+    return hashlib.sha256('\0'.join(values).encode()).hexdigest()
+
+
+def workshop_update_pending(record):
+    return bool((record.get('latest_manifest') and record['latest_manifest'] != record.get('manifest'))
+                or (record.get('latest_timeupdated') and record.get('timeupdated')
+                    and int(record['latest_timeupdated']) > int(record['timeupdated'])))
 
 
 def directory_stamp(root, manifest=''):
@@ -812,6 +921,7 @@ def self_test():
     with tempfile.TemporaryDirectory() as directory:
         service = WorkshopService(Path(directory), demo=True)
         item = service.scan()[0]
+        assert item['discovery_source'] == 'Steam ACF' and item['workshop']['manifest'] == '1'
         result = service.translate(item['id'])
         output = Path(item['path']) / 'localisation/simp_chinese/demo_l_simp_chinese.yml'
         assert '新的开始' in output.read_text(encoding='utf-8-sig')
