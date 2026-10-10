@@ -8,6 +8,7 @@ on:
       - '**.py'
       - 'workshop_ui.html'
       - 'rules.json'
+      - 'vendor/**'
       - 'requirements.txt'
       - 'packaging/**'
       - '.github/workflows/build-windows.yml'

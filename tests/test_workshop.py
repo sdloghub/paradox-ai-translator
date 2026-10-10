@@ -41,6 +41,62 @@ class WorkshopTests(unittest.TestCase):
         self.assertTrue(items[0]['url'].endswith('?id=123456'))
         self.assertEqual(Path(items[0]['path']), self.mod)
 
+    def test_scan_reuses_unchanged_inventory_after_restart(self):
+        self.scan()
+        restarted = app.WorkshopService(self.service.data_dir)
+        self.assertEqual(restarted.inventory['394360:123456']['title'], 'Workshop title')
+        self.assertEqual(restarted.inventory['394360:123456']['counts']['untranslated'], 1)
+        with patch.object(restarted, 'analyze', side_effect=AssertionError('unchanged should not analyze')):
+            result = restarted.scan(lambda ids: self.fail('unchanged should not fetch'))
+        self.assertEqual(result[0]['title'], 'Workshop title')
+
+    def test_scan_detects_same_size_content_change_with_preserved_timestamp(self):
+        self.scan()
+        previous = self.source.stat()
+        self.source.write_text(self.source.read_text().replace('Alpha', 'Gamma'))
+        os.utime(self.source, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+        calls = []
+        def fetch(ids):
+            calls.extend(ids)
+            return {'123456': {'title': 'Updated title', 'consumer_app_id': 394360}}
+        self.service.scan(fetch)
+        self.assertEqual(calls, ['123456'])
+        self.assertEqual(self.service.inventory['394360:123456']['title'], 'Updated title')
+
+    def test_scan_queries_only_new_and_changed_mods_and_removes_uninstalled(self):
+        self.scan()
+        new = self.mod.parent / '9999'
+        new.mkdir()
+        (new / 'descriptor.mod').write_text('name="Second Mod"')
+        calls = []
+        def fetch(ids):
+            calls.append(ids)
+            return {uid: {'title': uid, 'consumer_app_id': 394360} for uid in ids}
+        self.service.scan(fetch)
+        self.assertEqual(calls, [['9999']])
+        (new / 'descriptor.mod').unlink()
+        new.rmdir()
+        self.service.scan(lambda ids: self.fail('removed should not fetch'))
+        self.assertEqual(set(app.WorkshopService(self.service.data_dir).inventory), {'394360:123456'})
+
+    def test_failed_metadata_query_retries_without_reanalyzing_unchanged_files(self):
+        self.service.scan(lambda ids: {})
+        calls = []
+        with patch.object(self.service, 'analyze', side_effect=AssertionError('unchanged should not analyze')):
+            self.service.scan(lambda ids: calls.extend(ids) or {'123456': {'title': 'Recovered', 'consumer_app_id': 394360}})
+        self.assertEqual(calls, ['123456'])
+        self.assertEqual(self.service.inventory['394360:123456']['title'], 'Recovered')
+
+    def test_changed_chinese_refreshes_stats_and_manual_import_survives_restart(self):
+        self.scan()
+        chinese = self.mod / 'localisation/simp_chinese/test_l_simp_chinese.yml'
+        chinese.parent.mkdir(parents=True)
+        chinese.write_text('l_simp_chinese:\n key:0 "甲 $VALUE$"\n')
+        self.scan()
+        self.assertEqual(self.service.inventory['394360:123456']['counts']['translated'], 1)
+        restarted = app.WorkshopService(self.service.data_dir)
+        self.assertEqual(restarted.inventory['394360:123456']['counts']['translated'], 1)
+
     def test_offline_scan_uses_descriptor(self):
         def unavailable(ids):
             raise OSError('offline')

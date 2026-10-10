@@ -181,6 +181,9 @@ class WorkshopService:
                     id TEXT PRIMARY KEY, uid TEXT NOT NULL, appid TEXT NOT NULL,
                     title TEXT NOT NULL, path TEXT NOT NULL, url TEXT NOT NULL,
                     seen_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS scan_snapshots (
+                    mod_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+                    metadata_ok INTEGER NOT NULL, item_json TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS versions (
                     id INTEGER PRIMARY KEY, mod_id TEXT NOT NULL,
                     created_at TEXT NOT NULL, title TEXT NOT NULL,
@@ -196,7 +199,11 @@ class WorkshopService:
         self.cache = ModCache(self)
         if demo:
             self.setup_demo()
-        self.inventory = {}
+        with self.connect() as db:
+            self.inventory = {row[0]: json.loads(row[1]) for row in
+                              db.execute('SELECT mod_id,item_json FROM scan_snapshots')}
+        self.inventory = {key: item for key, item in self.inventory.items()
+                          if Path(item['path']).is_dir() and not Path(item['path']).is_symlink()}
         self.job = {'running': False, 'kind': '', 'messages': [], 'result': None, 'error': None}
         self.lock = threading.Lock()
 
@@ -296,31 +303,73 @@ class WorkshopService:
                                              'path': str(path.resolve()),
                                              'url': f'https://steamcommunity.com/sharedfiles/filedetails/?id={uid}',
                                              'name_source': '本地描述文件', 'translated': False}
-        self.log(f'发现 {len(found)} 个 Mod，正在查询创意工坊名称')
+        with self.connect() as db:
+            snapshots = {row[0]: row[1:] for row in db.execute(
+                'SELECT mod_id,fingerprint,metadata_ok,item_json FROM scan_snapshots')}
+        fingerprints, changed, pending = {}, set(), []
+        for index, (identifier, item) in enumerate(found.items(), 1):
+            self.log(f'校验本机文件 {index}/{len(found)}：{item["title"]}')
+            try:
+                fingerprints[identifier] = mod_fingerprint(Path(item['path']))
+            except OSError:
+                fingerprints[identifier] = None
+            cached = snapshots.get(identifier)
+            unchanged = (cached and fingerprints[identifier] is not None and
+                         cached[0] == fingerprints[identifier] and
+                         json.loads(cached[2])['path'] == item['path'])
+            if unchanged:
+                item.update(json.loads(cached[2]))
+                if item.get('counts', {}).get('error'):
+                    changed.add(identifier)
+            else:
+                changed.add(identifier)
+            if not unchanged or not cached[1]:
+                pending.append(identifier)
+        self.log(f'发现 {len(found)} 个 Mod：新增或变化 {len(changed)} 个，复用 {len(found)-len(changed)} 个')
         try:
-            details = fetch(list(dict.fromkeys(item['uid'] for item in found.values()))) if found and not self.demo else {}
+            details = fetch(list(dict.fromkeys(found[key]['uid'] for key in pending))) if pending and not self.demo else {}
         except Exception:
             details = {}
-            self.log('Steam 查询暂不可用，使用本地名称或历史记录')
+            self.log('Steam 查询暂不可用，保留历史名称；下次扫描重试')
         with self.connect() as db:
             for identifier, item in found.items():
                 existing = db.execute('SELECT title FROM mods WHERE id=?', (identifier,)).fetchone()
                 detail = details.get(item['uid'])
-                if detail and str(detail.get('consumer_app_id', item['appid'])) == item['appid']:
+                valid = bool(detail and detail.get('title') and
+                             str(detail.get('consumer_app_id', item['appid'])) == item['appid'])
+                item['_metadata_ok'] = self.demo or valid or (identifier not in pending)
+                if valid:
                     item['title'], item['name_source'] = detail['title'], 'Steam 创意工坊'
-                elif existing and item['title'] == f"Mod {item['uid']}":
+                elif existing and identifier in pending:
                     item['title'], item['name_source'] = existing[0], '历史记录'
                 db.execute('INSERT OR REPLACE INTO mods VALUES (?,?,?,?,?,?,?)',
                            (identifier, item['uid'], item['appid'], item['title'], item['path'], item['url'], now()))
                 item['translated'] = bool(db.execute('SELECT 1 FROM versions WHERE mod_id=? LIMIT 1', (identifier,)).fetchone())
         self.inventory = found
-        for item in found.values():
+        for identifier in changed:
             try:
-                self.analyze(item['id'])
+                self.analyze(identifier)
             except (OSError, UnicodeError, ValueError) as error:
-                item['counts'] = {'error': str(error), 'total': 0, 'translated': 0, 'untranslated': 0}
-        self.log('扫描完成（已提取本机中文并检查原文哈希）')
+                found[identifier]['counts'] = {'error': str(error), 'total': 0, 'translated': 0, 'untranslated': 0}
+        with self.connect() as db:
+            db.execute('DELETE FROM scan_snapshots')
+            for identifier, item in found.items():
+                self.persist_item(item, fingerprints[identifier], db)
+        self.log('扫描完成：本地清单已保存，仅更新新增或变化的 Mod')
         return list(found.values())
+
+    def persist_item(self, item, fingerprint=None, db=None):
+        if db is None:
+            with self.connect() as connection:
+                self.persist_item(item, fingerprint, connection)
+            return
+        # Only a scan validates the file fingerprint. Other actions update stats
+        # without acknowledging unseen changes in the Mod directory.
+        cached = db.execute('SELECT fingerprint,metadata_ok FROM scan_snapshots WHERE mod_id=?', (item['id'],)).fetchone()
+        db.execute('INSERT OR REPLACE INTO scan_snapshots VALUES (?,?,?,?)',
+                   (item['id'], fingerprint if fingerprint is not None else (cached[0] if cached else ''),
+                    int(item.get('_metadata_ok', cached[1] if cached else False)),
+                    json.dumps(item, ensure_ascii=False)))
 
     def history(self):
         with self.connect() as db:
@@ -363,6 +412,7 @@ class WorkshopService:
         self.cache.sync_workspace(item, sources)
         item['counts'] = self.cache.stats(item, sources)
         self.log(f"{item['title']}：已翻译 {item['counts']['translated']} / 待翻译 {item['counts']['untranslated']}")
+        self.persist_item(item)
         return {**item['counts'], **imported}
 
     def import_cache(self, identifier, path):
@@ -376,6 +426,7 @@ class WorkshopService:
         self.cache.sync_workspace(item, sources)
         item['counts'] = self.cache.stats(item, sources)
         self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条")
+        self.persist_item(item)
         return {**result, **item['counts']}
 
     def translate(self, identifier, translator=None, deploy=True):
@@ -424,6 +475,7 @@ class WorkshopService:
                 translated[target_path(name, item['game'])] = data
             self.cache.sync_workspace(item, sources)
             item['counts'] = self.cache.stats(item, sources)
+            self.persist_item(item)
             if failures:
                 raise ValueError(f'{failures} 条翻译失败，成功缓存已保存；未修改 Workshop 文件，点击补充翻译可重试')
             digest = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() for name, data in sorted(sources.items()))).hexdigest()
@@ -435,6 +487,7 @@ class WorkshopService:
         if deploy:
             self.restore(version, identifier)
         item['translated'] = True
+        self.persist_item(item)
         self.log('翻译完成')
         return {'version_id': version, 'files': len(translated), 'path': item['path'], 'workspace': str(workspace)}
 
@@ -486,6 +539,25 @@ class WorkshopService:
         return {'files': len(files), 'path': str(mod), 'version_id': int(version_id)}
 
 
+def mod_fingerprint(root):
+    """Hash relative filenames and contents; exclude links and read in bounded chunks."""
+    digest = hashlib.sha256()
+    for directory, folders, files in os.walk(root, followlinks=False):
+        folders[:] = sorted(name for name in folders if not (Path(directory) / name).is_symlink())
+        for name in sorted(files):
+            path = Path(directory) / name
+            if path.is_symlink() or not path.is_file():
+                continue
+            digest.update(path.relative_to(root).as_posix().encode('utf-8'))
+            digest.update(b'\0')
+            content = hashlib.sha256()
+            with path.open('rb') as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                    content.update(chunk)
+            digest.update(content.digest())
+    return digest.hexdigest()
+
+
 def now():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
@@ -522,6 +594,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             page = (ROOT / 'workshop_ui.html').read_text(encoding='utf-8').replace('__APP_TOKEN__', self.server.token)
             return self.send(200, page.encode(), 'text/html; charset=utf-8')
+        if self.path in ('/vendor/gsap.min.js', '/vendor/ScrollTrigger.min.js'):
+            return self.send(200, (ROOT / self.path.lstrip('/')).read_bytes(), 'text/javascript; charset=utf-8')
         if not self.authorized():
             return self.send(403, {'error': '访问令牌无效'})
         if self.path == '/api/state':
@@ -618,6 +692,8 @@ def self_test():
     request.findrule('hoi4')
     page = (ROOT / 'workshop_ui.html').read_text(encoding='utf-8')
     assert '__APP_TOKEN__' in page
+    for name in ('gsap.min.js', 'ScrollTrigger.min.js'):
+        assert (ROOT / 'vendor' / name).is_file()
     with tempfile.TemporaryDirectory() as directory:
         service = WorkshopService(Path(directory), demo=True)
         item = service.scan()[0]
@@ -634,6 +710,11 @@ def self_test():
         cache_path.write_text(json.dumps(exported), encoding='utf-8')
         service.import_cache(item['id'], cache_path)
         assert service.config()['api_key'] == ''
+        service.scan()
+        restarted = WorkshopService(Path(directory), demo=True)
+        assert restarted.inventory[item['id']]['counts']['translated'] == 2
+        restarted.scan(lambda ids: (_ for _ in ()).throw(AssertionError('unchanged metadata query')))
+        assert any('复用 1 个' in message for message in restarted.status()['messages'])
     print('WORKSHOP_TRANSLATOR_SELF_TEST_OK', flush=True)
 
 

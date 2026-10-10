@@ -5,7 +5,7 @@ analysis = Analysis(
     [str(root / 'workshop_app.py')],
     pathex=[str(root)],
     binaries=[],
-    datas=[(str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.')],
+    datas=[(str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.'), (str(root / 'vendor'), 'vendor')],
     hiddenimports=['paradox', 'request', 'openai', 'winreg', 'translation_cache', 'tkinter.filedialog'],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     noarchive=False,
