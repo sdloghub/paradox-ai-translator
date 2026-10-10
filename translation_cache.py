@@ -176,7 +176,7 @@ class ModCache:
                 if row and request.valid_translation(entry['text'], row[0]):
                     translated += 1
                     origins[row[1]] = origins.get(row[1], 0) + 1
-                elif db.execute('SELECT 1 FROM translation_entries WHERE mod_id=? AND source_file=? AND entry_key=? LIMIT 1', (item['id'], entry['source_file'], entry['key'])).fetchone():
+                elif any(canonical_key(old[0]) == canonical_key(entry['key']) and old[1] != digest(entry['text']) for old in db.execute('SELECT entry_key,source_hash FROM translation_entries WHERE mod_id=? AND source_file=?', (item['id'], entry['source_file']))):
                     needs_update += 1
         return {'total': len(current), 'translated': translated, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 

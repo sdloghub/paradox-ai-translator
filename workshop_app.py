@@ -400,6 +400,9 @@ class WorkshopService:
             label = provider.strip() or f'翻译-{date}-{revision}'
             db.execute('INSERT INTO source_runs(kind,name,created_at) VALUES (?,?,?)', (kind, label, datetime.now().isoformat()))
         registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
+        if kind == 'AI':
+            registry.setdefault('profiles', {})[label] = {**self.config(), 'provider': label, 'saved_at': now()}
+            registry['active'] = label
         registry.setdefault('sources', {})[label] = {'kind': kind, 'name': label, 'updated_at': now()}
         atomic_bytes(self.providers_path, json.dumps(registry, ensure_ascii=False, indent=2).encode(), private=True)
         return label

@@ -146,6 +146,7 @@ class WorkshopTests(unittest.TestCase):
         second = restarted.source_label('AI')
         self.assertRegex(first, r'^翻译-\d{4}-\d{2}-\d{2}-1$')
         self.assertTrue(second.endswith('-2'))
+        self.assertIn(second, json.loads(restarted.providers_path.read_text())['profiles'])
 
     def test_release_package_copies_settings_and_markers_but_redacts_keys(self):
         import importlib.util
