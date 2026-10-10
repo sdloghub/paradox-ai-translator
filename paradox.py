@@ -194,9 +194,10 @@ def atomic_write(path, text):
         if temporary is not None:
             temporary.unlink(missing_ok=True)
 
-def outputs(local_path, dic, mde, output_root=None):
-    src = ROOT / 'localisation' / local_path
-    dst = (Path(output_root) if output_root is not None else ROOT / 'chn') / output_name(local_path, mde)
+def outputs(local_path, dic, mde, output_root=None, project_root=None):
+    project_root = Path(project_root) if project_root is not None else ROOT
+    src = project_root / 'localisation' / local_path
+    dst = (Path(output_root) if output_root is not None else project_root / 'chn') / output_name(local_path, mde)
     lines = []
     # Read UTF-8 without stripping BOM so it is retained in the output.
     with src.open(encoding='utf-8', newline='') as source:
@@ -214,12 +215,14 @@ def outputs(local_path, dic, mde, output_root=None):
             lines.append(line)
     atomic_write(dst, ''.join(lines))
 
-def translate_para(local_path, mde, output_root=None):
+def translate_para(local_path, mde, output_root=None, project_root=None, translator=None):
     import hashlib
     import json
     import logging
-    entries = extract(ROOT / 'localisation' / local_path, mde)
-    cache_path = ROOT / 'already' / (str(local_path) + '.cache.json')
+    project_root = Path(project_root) if project_root is not None else ROOT
+    translator = translator or request.request_deepseek_batch
+    entries = extract(project_root / 'localisation' / local_path, mde)
+    cache_path = project_root / 'already' / (str(local_path) + '.cache.json')
     try:
         cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
         if not isinstance(cache, dict):
@@ -241,7 +244,7 @@ def translate_para(local_path, mde, output_root=None):
     failures = 0
     for offset in range(0, len(pending), 150):
         keys = pending[offset:offset + 150]
-        results = request.request_deepseek_batch([tran[key].word for key in keys], mde, successful, len(tran))
+        results = translator([tran[key].word for key in keys], mde, successful, len(tran))
         if len(results) != len(keys):
             raise ValueError('请求结果数量与输入不一致')
         for key, result in zip(keys, results):
@@ -253,5 +256,5 @@ def translate_para(local_path, mde, output_root=None):
                 failures += 1
         # Save each completed segment independently of final publication.
         atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
-    outputs(local_path, tran, mde, output_root)
+    outputs(local_path, tran, mde, output_root, project_root)
     return failures

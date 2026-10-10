@@ -26,3 +26,11 @@ htmlcov/
 *.rar
 *.7z
 *.lnk
+
+# Local application config, SQLite backups and per-Mod workspaces
+/app_data*/
+
+# Packaging output and isolated build environment
+/build/
+/dist/
+/.venv-build/

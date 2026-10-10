@@ -3,7 +3,14 @@ import json
 from pathlib import Path
 import concurrent.futures
 
-from openai import OpenAI, APIConnectionError, APITimeoutError
+try:
+    from openai import OpenAI, APIConnectionError, APITimeoutError
+except ImportError:
+    OpenAI = None
+    class APIConnectionError(Exception):
+        pass
+    class APITimeoutError(Exception):
+        pass
 import logging
 import time
 import os
@@ -33,14 +40,19 @@ def valid_translation(original, translated):
             and "---SEPARATOR---" not in translated
             and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(translated)))
 
-def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40):
+def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40, config=None, progress=None):
     """返回与输入顺序一致的 {text, success, error}；失败项保留原文。"""
     if batch_size < 1 or pool_size < 1:
         raise ValueError("batch_size 和 pool_size 必须大于零")
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    config = config or {}
+    api_key = config.get("api_key") or os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
-        raise RuntimeError("请设置 DEEPSEEK_API_KEY 环境变量")
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com", max_retries=0)
+        raise RuntimeError("请在设置中填写 API Key")
+    if OpenAI is None:
+        raise RuntimeError("缺少 openai 依赖，请运行启动脚本或安装 requirements.txt")
+    client = OpenAI(api_key=api_key, base_url=config.get("base_url", "https://api.deepseek.com"),
+                    timeout=90, max_retries=0)
+    model = config.get("model", "deepseek-chat")
     rule = findrule(game)
     separator = "\n---SEPARATOR---\n"
 
@@ -52,7 +64,7 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
         for attempt in range(4):
             try:
                 response = client.chat.completions.create(
-                    model="deepseek-chat",
+                    model=model,
                     messages=[{"role": "system", "content": rule},
                               {"role": "user", "content": text}],
                 )
@@ -102,5 +114,8 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
             batch_results = future.result()
             results[start:start + len(batch_results)] = batch_results
             completed += len(batch_results)
-            print(f"已处理 {al_cnt + completed}/{all_len}")
+            message = f"已处理 {al_cnt + completed}/{all_len}"
+            print(message)
+            if progress:
+                progress(message)
     return results

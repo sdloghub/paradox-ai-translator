@@ -42,3 +42,14 @@ python3 -m unittest discover -s tests -v
 
 `localisation/`（翻译原文）、`chn/`（输出译文）、`already/`（翻译缓存）均只在本地保存，不提交到 Git。日志、Python 缓存、虚拟环境和本地密钥文件也已忽略。
 Git 中保留源码、`rules.json`、依赖声明、测试和说明文档。克隆后按需创建 `localisation/<游戏>/` 并放入待翻译 YML 文件。
+
+## macOS 图形试运行
+
+双击 `演示程序.command` 可以完整演示扫描、翻译、回写、备份与一键恢复，无需 API Key。
+真实使用请双击 `启动翻译程序.command`，在本地界面填写 OpenAI 兼容接口配置。
+详细流程与数据存放位置见 [试运行说明.md](试运行说明.md)。
+
+## Windows EXE
+
+单文件打包配置、Windows 本机构建脚本和 GitHub Actions 工作流已加入。
+使用与构建方法见 [Windows使用说明.md](Windows使用说明.md)。
