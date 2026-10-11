@@ -94,7 +94,7 @@ class ModCache:
             VALUES (?,?,?,?,?,?,?)''', (identifier, entry['source_file'], entry['key'], digest(entry['text']), text, digest(text), origin))
 
     def import_candidates(self, item, sources, translations, origin):
-        source_entries = entries(sources, item['game'], strict=False)
+        source_entries = [entry for entry in entries(sources, item['game'], strict=False) if entry['text'].strip()]
         imported = rejected = 0
         source_counts = {}
         for entry in source_entries:
@@ -161,6 +161,8 @@ class ModCache:
                     existing = {}
                 before = json.dumps(existing, ensure_ascii=False, indent=2)
                 for entry in entries({name: sources[name]}, item['game'], strict=False):
+                    if not entry['text'].strip():
+                        continue
                     h = digest(entry['text'])
                     text = cached_rows.get((name, entry['key'], h))
                     cached = existing.get(entry['key'], {})
@@ -176,6 +178,8 @@ class ModCache:
     def stats(self, item, sources):
         issues = []
         current = entries(sources, item['game'], issues=issues)
+        skipped_blank = sum(not entry['text'].strip() for entry in current)
+        current = [entry for entry in current if entry['text'].strip()]
         translated = needs_update = 0
         deployed = 0
         local_entries = {}
@@ -203,7 +207,7 @@ class ModCache:
                     origins[row[1]] = origins.get(row[1], 0) + 1
                 elif history.get((entry['source_file'], canonical_key(entry['key'])), set()) - {digest(entry['text'])}:
                     needs_update += 1
-        return {'total': len(current) + len(issues), 'translated': translated, 'deployed': deployed, 'cached': translated - deployed, 'parse_errors': len(issues), 'issues': issues, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
+        return {'total': len(current) + len(issues), 'skipped_blank': skipped_blank, 'translated': translated, 'deployed': deployed, 'cached': translated - deployed, 'parse_errors': len(issues), 'issues': issues, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 
     def export(self, item):
         with self.service.connect() as db:

@@ -48,6 +48,8 @@ def findrule(game):
 TOKENS = re.compile(r'\$[^$\r\n]*\$|\[[^\]\r\n]*\]|£[^£\s]+£?|@[A-Za-z0-9_]+!?|§.|\#(?:[A-Za-z][A-Za-z0-9_]*|!)|\\(?:[nrt"\\])')
 
 def valid_translation(original, translated):
+    if not original.strip():
+        return translated == original
     return (isinstance(translated, str)
             and (bool(translated.strip()) or not original.strip())
             and "---SEPARATOR---" not in translated
@@ -57,6 +59,18 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
     """返回与输入顺序一致的 {text, success, error}；失败项保留原文。"""
     if batch_size < 1 or pool_size < 1:
         raise ValueError("batch_size 和 pool_size 必须大于零")
+    if not tran:
+        return []
+    nonblank = [index for index, text in enumerate(tran) if text.strip()]
+    if len(nonblank) != len(tran):
+        # Empty entries are intentional localisation placeholders, not API input.
+        results = [{"text": text, "success": True, "error": None} for text in tran]
+        if nonblank:
+            translated = request_deepseek_batch([tran[index] for index in nonblank], game,
+                al_cnt + len(tran) - len(nonblank), all_len, batch_size, pool_size, config, progress)
+            for index, result in zip(nonblank, translated):
+                results[index] = result
+        return results
     config = config or {}
     api_key = config.get("api_key") or os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:

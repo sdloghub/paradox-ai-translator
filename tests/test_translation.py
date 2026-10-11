@@ -44,6 +44,21 @@ class TranslationTests(unittest.TestCase):
         self.assertEqual([r['text'] for r in result], ['甲', '乙'])
         self.assertTrue(all(r['success'] for r in result))
 
+    def test_blank_batch_needs_no_credentials_or_sdk(self):
+        with patch.object(request, 'load_sdk', side_effect=AssertionError('SDK should not load')), patch.dict(os.environ, {}, clear=True):
+            results = request.request_deepseek_batch(['', '  ', '\t'], 'st', 0, 3)
+            self.assertEqual([r['text'] for r in results], ['', '  ', '\t'])
+            self.assertTrue(all(r['success'] for r in results))
+            self.assertEqual(request.request_deepseek_batch([], 'st', 0, 0), [])
+
+    def test_mixed_blank_entries_preserve_order_without_model_requests(self):
+        result, client = self.call(['', 'a', '  ', 'b', '\t'], [reply('甲\n---SEPARATOR---\n乙')])
+        self.assertEqual([r['text'] for r in result], ['', '甲', '  ', '乙', '\t'])
+        self.assertEqual(client.chat.completions.create.call_count, 1)
+        sent = client.chat.completions.create.call_args.kwargs['messages'][1]['content']
+        self.assertEqual(sent, 'a\n---SEPARATOR---\nb')
+        self.assertFalse(request.valid_translation('', '虚构译文'))
+
     def test_bad_separator_retries_individually(self):
         result, _ = self.call(['a', 'b'], [reply('错误合并'), reply('甲'), ValueError('failure')])
         self.assertEqual(result[0]['text'], '甲')

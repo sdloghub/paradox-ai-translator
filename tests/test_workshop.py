@@ -364,6 +364,30 @@ class WorkshopTests(unittest.TestCase):
         counts = self.service.analyze('394360:123456')
         self.assertEqual(counts['translated'], 0)
 
+    def test_blank_localisation_skips_api_and_preserves_whitespace(self):
+        raw = 'l_english:\n empty:0 ""\n spaces:0 "   "\n tabs:0 "\t"\n\n'
+        self.source.write_text(raw, encoding='utf-8')
+        item = self.scan()[0]
+        counts = self.service.analyze(item['id'])
+        self.assertEqual(counts['untranslated'], 0)
+        self.assertEqual(counts['skipped_blank'], 3)
+        with patch('request.request_deepseek_batch', side_effect=AssertionError('blank text sent to API')):
+            result = self.service.translate(item['id'])
+        self.assertEqual(result['error_lines'], 0)
+        output = self.mod / 'localisation/simp_chinese/test_l_simp_chinese.yml'
+        self.assertEqual(output.read_text('utf-8-sig'), raw.replace('l_english:', 'l_simp_chinese:'))
+
+    def test_mixed_blank_entries_do_not_send_empty_text_to_translator(self):
+        self.source.write_text('l_english:\n empty:0 ""\n good:0 "Alpha $VALUE$"\n spaces:0 "  "\n', encoding='utf-8')
+        self.scan()
+        calls = []
+        def translator(texts, *args):
+            calls.extend(texts)
+            return self.translator(texts, *args)
+        result = self.service.translate('394360:123456', translator)
+        self.assertEqual(calls, ['Alpha $VALUE$'])
+        self.assertEqual(result['error_lines'], 0)
+
     def test_repeated_eu4_uses_original_backup(self):
         eu = self.library / 'steamapps/workshop/content/236850/9999'
         source = eu / 'localisation/test_l_english.yml'
