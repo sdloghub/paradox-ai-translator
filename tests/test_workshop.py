@@ -363,6 +363,25 @@ class WorkshopTests(unittest.TestCase):
         self.assertEqual(result['issues'][0]['line'], 2)
         counts = self.service.analyze('394360:123456')
         self.assertEqual(counts['translated'], 0)
+        self.assertEqual(result['issues'][0]['original_file'], str(self.source))
+        self.assertEqual(result['issues'][0]['original_line'], ' key:0 "Alpha $VALUE$"')
+        self.assertIn('原文： key:0 "Alpha $VALUE$"', '\n'.join(self.service.status()['messages']))
+
+    def test_format_and_translation_errors_log_source_lines_and_save_report(self):
+        raw = 'l_english:\r\n bad:0 "Unclosed  \r\n good:0 "Alpha $VALUE$" # comment\r\n'
+        self.source.write_bytes(raw.encode('utf-8'))
+        self.scan()
+        self.assertIn('原文： bad:0 "Unclosed  ', '\n'.join(self.service.status()['messages']))
+        result = self.service.translate('394360:123456', lambda texts, *args: [{'success': False, 'text': t} for t in texts])
+        self.assertEqual(result['error_lines'], 2)
+        self.assertEqual([p['line'] for p in result['issues']], [2, 3])
+        self.assertEqual([p['original_line'] for p in result['issues']], raw.splitlines()[1:])
+        report = json.loads((Path(result['workspace']) / 'translation-report.json').read_text('utf-8'))
+        self.assertEqual(report['issues'], result['issues'])
+        logs = '\n'.join(self.service.status()['messages'])
+        for issue in result['issues']:
+            self.assertIn(f"原文件：{self.source}，第 {issue['line']} 行", logs)
+            self.assertIn('原文：' + issue['original_line'], logs)
 
     def test_blank_localisation_skips_api_and_preserves_whitespace(self):
         raw = 'l_english:\n empty:0 ""\n spaces:0 "   "\n tabs:0 "\t"\n\n'

@@ -532,6 +532,8 @@ class WorkshopService:
         item['counts'] = self.cache.stats(item, sources)
         item['scan_state'] = '已扫描'
         self.log(f"{item['title']}：已翻译 {item['counts']['deployed']} / 已缓存 {item['counts']['cached']} / 待翻译 {item['counts']['untranslated']} / 格式报错 {item['counts']['parse_errors']} 行")
+        for problem in item['counts']['issues']:
+            self.log(f"原文件：{Path(item['path']) / problem['file']}，第 {problem['line']} 行\n原因：{problem['reason']}\n原文：{problem['original_line']}")
         self.persist_item(item)
         self.save_completed()
         return {**item['counts'], **imported}
@@ -598,7 +600,7 @@ class WorkshopService:
                 relative = Path(item['game']) / name
                 file_issues = []
                 failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues)
-                issues.extend({**problem, 'file': name} for problem in file_issues)
+                issues.extend({**problem, 'file': name, 'original_file': str(Path(item['path']) / name)} for problem in file_issues)
                 output = staging / paradox.output_name(relative, item['game'])
                 data = output.read_bytes()
                 if not data.startswith(b'\xef\xbb\xbf'):
@@ -627,7 +629,7 @@ class WorkshopService:
         self.save_completed()
         self.log('翻译完成 · 来源：' + label)
         for problem in issues:
-            self.log(f"{problem['file']}:{problem['line']}：{problem['reason']}")
+            self.log(f"原文件：{problem['original_file']}，第 {problem['line']} 行\n原因：{problem['reason']}\n原文：{problem['original_line']}")
         self.log(f'任务结束：报错 {len(issues)} 行，已将对应英文原行保留在翻译文件中；完整明细：{workspace / "translation-report.json"}')
         return {'version_id': version, 'files': len(translated), 'path': item['path'], 'workspace': str(workspace), 'provider': label, 'error_lines': len(issues), 'issues': issues}
 

@@ -47,6 +47,7 @@ class BugBranchTests(unittest.TestCase):
             self.assertIn(' bad:0 "Unclosed\n', output)
             self.assertIn(' good:0 "你好"', output)
             self.assertEqual([issue['line'] for issue in issues], [2])
+            self.assertEqual(issues[0]['original_line'], ' bad:0 "Unclosed')
             self.assertEqual(source.read_text('utf-8'), raw)
 
     def test_common_prompt_keeps_distinct_game_guidance(self):
@@ -58,6 +59,21 @@ class BugBranchTests(unittest.TestCase):
                 self.assertIn(rules['common'], prompt)
                 self.assertIn(rules['games'][game]['name'], prompt)
                 self.assertIn(rules['games'][game]['guidance'], prompt)
+
+    def test_repeated_key_failure_reports_each_original_line(self):
+        raw = 'l_english:\n same:0 "First"\n same:0 "Second"\n'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'localisation/st/test_l_english.yml'
+            source.parent.mkdir(parents=True)
+            source.write_text(raw, encoding='utf-8')
+            issues = []
+            paradox.translate_para('st/test_l_english.yml', 'st', project_root=root, issues=issues,
+                translator=lambda texts, *args: [{'text': text, 'success': False} for text in texts])
+            self.assertEqual([p['line'] for p in issues], [2, 3])
+            self.assertEqual([p['original_line'] for p in issues], raw.splitlines()[1:])
+            output = (root / 'chn/st/test_l_simp_chinese.yml').read_text('utf-8')
+            self.assertEqual(output, raw.replace('l_english:', 'l_simp_chinese:'))
 
 
 if __name__ == '__main__':

@@ -23,7 +23,7 @@ def entries(files, game, strict=True, issues=None):
             except paradox.LocalisationError:
                 if issues is None:
                     raise
-                issues.append({'file': filename, 'line': number, 'reason': '无法解析；翻译时保留英文原行'})
+                issues.append({'file': filename, 'line': number, 'original_line': line.rstrip('\r\n'), 'reason': '无法解析；翻译时保留英文原行'})
                 continue
             if match:
                 result.append({'source_file': filename, 'key': match['prefix'].lstrip(),

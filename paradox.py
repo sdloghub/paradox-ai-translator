@@ -186,7 +186,7 @@ def extract(path, mde, issues=None):
             except LocalisationError:
                 if issues is None:
                     raise
-                issues.append({'file': str(path), 'line': number, 'reason': '无法解析；已保留英文原行'})
+                issues.append({'file': str(path), 'line': number, 'original_line': line.rstrip('\r\n'), 'reason': '无法解析；已保留英文原行'})
                 continue
             if match:
                 if match['extra_quotes']:
@@ -219,7 +219,7 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None):
     with src.open(encoding='utf-8', newline='') as source:
         for line in source:
             match = parse_line(line)
-            if match and match['prefix'].lstrip() in dic:
+            if match and match['prefix'].lstrip() in dic and dic[match['prefix'].lstrip()].vis:
                 text = dic[match['prefix'].lstrip()].word.replace('\n', r'\n')
                 if mde == 'eu4':
                     text = special_escape(text, True, True)
@@ -238,13 +238,13 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
     project_root = Path(project_root) if project_root is not None else ROOT
     translator = translator or request.request_deepseek_batch
     entries = extract(project_root / 'localisation' / local_path, mde, issues=issues)
-    line_numbers = {}
+    source_lines = {}
     if issues is not None:
         with (project_root / 'localisation' / local_path).open(encoding='utf-8-sig') as stream:
             for number, line in enumerate(stream, 1):
                 match = parse_line(line)
                 if match:
-                    line_numbers[match['prefix'].lstrip()] = number
+                    source_lines.setdefault(match['prefix'].lstrip(), []).append((number, line.rstrip('\r\n')))
     cache_path = project_root / 'already' / (str(local_path) + '.cache.json')
     try:
         cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
@@ -284,7 +284,8 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
             else:
                 failures += 1
                 if issues is not None:
-                    issues.append({'file': str(local_path), 'line': line_numbers[key], 'reason': '翻译失败或返回格式异常；已保留英文'})
+                    for number, original_line in source_lines[key]:
+                        issues.append({'file': str(local_path), 'line': number, 'original_line': original_line, 'reason': '翻译失败或返回格式异常；已保留英文'})
         # Save each completed segment independently of final publication.
         atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
     outputs(local_path, tran, mde, output_root, project_root)
