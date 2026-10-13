@@ -99,3 +99,8 @@ Workshop 工作台遇到本地化解析异常或模型返回 ValueError 时，�
 后续向用户提供差异更新包：关闭程序，将更新包直接解压到原 WorkshopTranslator.exe 所在文件夹，覆盖同名文件，不另建子文件夹。更新包只包含变化的程序文件，不包含 config.json、providers.json、completed.json、数据库、工作目录或 Mod。制作更新包时以用户上一版完整发布包作为比较基准，内部完整构建用于差异比较，不再作为默认交付。
 
 空字符串、纯空格和制表符条目保留原样，不发送给模型、不计入待翻译、不产生错误；普通非空文本仍按原流程翻译。
+
+
+## 配置保存位置（2026-10-13）
+
+设置中可选择“程序所在文件夹”或“用户文件夹”，点击“切换保存位置”生效。前者将 config.json 和 providers.json 放在 EXE 同一文件夹，可随程序一起携带；后者默认使用 %LOCALAPPDATA%/WorkshopTranslator/app_data，macOS 使用 ~/Library/Application Support/WorkshopTranslator/app_data。切换时复制当前配置并合并已保存 API 接口，目标同名且不同的配置会另存保留；任务运行中不能切换。保存位置记入 config-storage.json，重启仍有效。翻译数据库、缓存与中文备份保持原数据目录。程序文件夹不可写时给出提示，仍可使用用户文件夹模式。覆盖更新包不包含这些个人配置或保存模式标记。

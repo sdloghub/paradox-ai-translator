@@ -39,6 +39,16 @@ def default_data_dir(demo=False):
     return ROOT / suffix
 
 
+def user_config_dir():
+    if os.name == 'nt':
+        base = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData/Local')))
+    elif sys.platform == 'darwin':
+        base = Path.home() / 'Library/Application Support'
+    else:
+        base = Path.home() / '.config'
+    return base / 'WorkshopTranslator/app_data'
+
+
 def open_folder(path):
     if os.name == 'nt':
         os.startfile(str(path))
@@ -168,21 +178,43 @@ def target_path(name, game):
 
 
 class WorkshopService:
-    def __init__(self, data_dir=None, demo=False):
+    def __init__(self, data_dir=None, demo=False, program_dir=None):
         self.demo = demo
         self.data_dir = Path(data_dir or default_data_dir(demo)).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.chmod(0o700)
-        self.config_path = self.data_dir / 'config.json'
-        self.providers_path = self.data_dir / 'providers.json'
         self.completed_path = self.data_dir / 'completed.json'
-        bundle = Path(sys.executable).parent if getattr(sys, 'frozen', False) else ROOT
+        bundle = Path(program_dir or (Path(sys.executable).parent if getattr(sys, 'frozen', False) else ROOT)).resolve()
+        self.config_directories = {'portable': bundle, 'user': self.data_dir if data_dir is not None or demo else user_config_dir().resolve()}
+        self.storage_marker = self.data_dir / 'config-storage.json'
+        self.storage_mode = 'user'
+        for marker in (self.storage_marker, bundle / 'config-storage.json'):
+            if marker.is_file():
+                saved = json.loads(marker.read_text(encoding='utf-8'))
+                if marker == self.storage_marker and saved.get('program_dir', str(bundle)) != str(bundle):
+                    continue
+                choice = saved.get('mode')
+                if choice not in self.config_directories:
+                    raise ValueError('配置保存模式无效')
+                self.storage_mode = choice
+                break
+        config_dir = self.config_directories[self.storage_mode]
+        config_dir.mkdir(parents=True, exist_ok=True)
+        self.config_path = config_dir / 'config.json'
+        self.providers_path = config_dir / 'providers.json'
+        # Retain legacy development settings when moving to the user directory.
+        if self.storage_mode == 'user' and config_dir != self.data_dir:
+            for name in ('config.json', 'providers.json'):
+                old = self.data_dir / name
+                if old.is_file() and not (config_dir / name).exists():
+                    atomic_bytes(config_dir / name, old.read_bytes(), private=True)
         if not self.providers_path.exists() and not demo and (bundle / 'providers.json').is_file():
             atomic_bytes(self.providers_path, (bundle / 'providers.json').read_bytes(), private=True)
         if not self.config_path.exists():
-            bundle = Path(sys.executable).parent if getattr(sys, 'frozen', False) else ROOT
             template = bundle / 'config.json'
             self.save_config(json.loads(template.read_text(encoding='utf-8')) if template.is_file() and not demo else DEFAULT_CONFIG)
+        if not self.providers_path.exists():
+            atomic_bytes(self.providers_path, json.dumps({'format': 'workshop-providers-v1', 'profiles': {}}).encode(), private=True)
         self.database = self.data_dir / 'translations.sqlite3'
         with self.connect() as db:
             db.executescript('''
@@ -257,6 +289,59 @@ class WorkshopService:
         cfg = self.config()
         cfg['has_api_key'] = bool(cfg.pop('api_key', ''))
         return cfg
+
+    def config_storage(self):
+        return {'mode': self.storage_mode, 'path': str(self.config_path),
+                'directories': {mode: str(path) for mode, path in self.config_directories.items()}}
+
+    def switch_config_storage(self, mode):
+        if mode not in self.config_directories:
+            raise ValueError('请选择程序文件夹或用户文件夹')
+        with self.lock:
+            if self.job['running']:
+                raise ValueError('请等待任务结束后切换配置保存位置')
+            if mode == self.storage_mode:
+                return self.config_storage()
+            current = self.config()
+            registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
+            target = self.config_directories[mode]
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                old_registry = json.loads((target / 'providers.json').read_text(encoding='utf-8')) if (target / 'providers.json').is_file() else {}
+                profiles = dict(old_registry.get('profiles', {}))
+                old_config = json.loads((target / 'config.json').read_text(encoding='utf-8')) if (target / 'config.json').is_file() else {}
+                if old_config.get('api_key') or old_config.get('config_name'):
+                    old_name = old_config.get('config_name') or '原目标配置'
+                    profiles.setdefault(old_name, old_config)
+                for name, profile in registry.get('profiles', {}).items():
+                    existing = profiles.get(name)
+                    if existing and {k: v for k, v in existing.items() if k != 'saved_at'} != {k: v for k, v in profile.items() if k != 'saved_at'}:
+                        number = 1
+                        while f'{name}（保留 {number}）' in profiles:
+                            number += 1
+                        alias = f'{name}（保留 {number}）'
+                        profiles[alias] = {**existing, 'config_name': alias}
+                    profiles[name] = profile
+                merged = {**old_registry, **registry, 'profiles': profiles,
+                          'sources': {**old_registry.get('sources', {}), **registry.get('sources', {})}}
+                atomic_bytes(target / 'providers.json', json.dumps(merged, ensure_ascii=False, indent=2).encode(), private=True)
+                atomic_bytes(target / 'config.json', json.dumps(current, ensure_ascii=False, indent=2).encode(), private=True)
+                marker = json.dumps({'mode': mode, 'program_dir': str(self.config_directories['portable'])}, ensure_ascii=False).encode()
+                # Portable mode follows the program folder when copied to another PC.
+                if mode == 'portable':
+                    atomic_bytes(target / 'config-storage.json', marker, private=True)
+                atomic_bytes(self.storage_marker, marker, private=True)
+                if mode == 'user' and (self.config_directories['portable'] / 'config-storage.json').exists():
+                    try:
+                        atomic_bytes(self.config_directories['portable'] / 'config-storage.json', marker, private=True)
+                    except OSError:
+                        pass
+            except PermissionError as error:
+                raise ValueError('无法写入所选文件夹，请选择有写入权限的位置，或使用用户文件夹模式') from error
+            self.storage_mode = mode
+            self.config_path = target / 'config.json'
+            self.providers_path = target / 'providers.json'
+            return self.config_storage()
 
     def save_config(self, changes):
         cfg = self.config() if self.config_path.exists() else dict(DEFAULT_CONFIG)
@@ -837,7 +922,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/state':
             service = self.server.service
             return self.send(200, {'config': service.public_config(), 'profiles': service.profiles(), 'mods': list(service.inventory.values()),
-                                   'history': service.history(), 'job': service.status(), 'data_dir': str(service.data_dir), 'demo': service.demo})
+                                   'history': service.history(), 'job': service.status(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo})
         self.send(404, {'error': '未找到'})
 
     def do_POST(self):
@@ -853,6 +938,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('请求格式错误')
             if self.path == '/api/profile':
                 return self.send(200, service.switch_profile(body['name']))
+            if self.path == '/api/config-storage':
+                return self.send(200, service.switch_config_storage(body['mode']))
             if self.path == '/api/config':
                 if service.status()['running']:
                     raise ValueError('请等待任务结束后修改配置')

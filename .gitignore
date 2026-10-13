@@ -42,3 +42,6 @@ htmlcov/
 
 # Recoverable local cleanup archive
 /.cleanup-archive/
+
+# Portable configuration storage selector
+/config-storage.json
