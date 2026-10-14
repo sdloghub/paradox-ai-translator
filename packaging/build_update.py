@@ -41,7 +41,7 @@ def build_update(base, release, destination):
              '不要额外新建子文件夹，不要删除原 _internal 文件夹。',
              '本包不包含 API 配置、完成记录、数据库或 Mod 文件，不会覆盖这些数据。',
              '空字符串、纯空格与制表符条目保留原样，不发送给模型，不计入待翻译。',
-             '', '基于上一版 EXE SHA256：' + base_hash,
+             '', '差异比较基准 EXE SHA256：' + base_hash,
              '变化文件校验值：']
     lines += [hashlib.sha256(data).hexdigest() + '  ' + name for name, data in sorted(changes.items())]
     try:
