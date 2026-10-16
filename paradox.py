@@ -165,7 +165,9 @@ def parse_line(line):
 
 def checked_line(line, path, number):
     match = parse_line(line)
-    if not match and not line.lstrip().startswith('#') and ':' in line and '"' in line:
+    ignored = (not line.strip() or line.lstrip().startswith('#')
+               or re.fullmatch(r'\s*l_[A-Za-z_]+\s*:\s*(?:#[^\r\n]*)?\s*', line))
+    if not match and not ignored:
         raise LocalisationError(f"无法解析本地化条目：{path}:{number}；请检查闭合引号、转义和行尾内容")
     return match
 

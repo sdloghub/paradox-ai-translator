@@ -8,6 +8,10 @@ import workshop_app as app
 
 
 class ConfigStorageTests(unittest.TestCase):
+    def test_macos_bundle_keeps_portable_files_beside_app(self):
+        with patch.object(app.sys, 'frozen', True, create=True), patch.object(app.sys, 'platform', 'darwin'), patch.object(app.sys, 'executable', '/tmp/Release/WorkshopTranslator.app/Contents/MacOS/WorkshopTranslator'):
+            self.assertEqual(app.program_directory(), Path('/tmp/Release').resolve())
+
     def test_modes_copy_settings_and_survive_restart_without_moving_database(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

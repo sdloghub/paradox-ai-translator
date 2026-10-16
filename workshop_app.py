@@ -26,6 +26,16 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
+APP_VERSION = '2026.10.16-aggregate.1'
+
+
+def program_directory():
+    if not getattr(sys, 'frozen', False):
+        return ROOT
+    executable = Path(sys.executable).resolve()
+    if sys.platform == 'darwin' and executable.parent.name == 'MacOS' and executable.parent.parent.name == 'Contents':
+        return executable.parent.parent.parent.parent
+    return executable.parent
 
 
 def default_data_dir(demo=False):
@@ -61,7 +71,7 @@ GAMES = {'281990': ('st', '群星'), '394360': ('hoi4', '钢铁雄心4'),
          '529340': ('vic3', '维多利亚3')}
 DEFAULT_CONFIG = {'api_format': 'openai', 'provider': '', 'config_name': '', 'base_url': 'https://api.openai.com/v1',
                   'api_key': '', 'model': 'gpt-4.1-mini', 'batch_size': 10,
-                  'concurrency': 3, 'steam_libraries': []}
+                  'concurrency': 3, 'steam_libraries': [], 'aggregate_export': True}
 
 
 def atomic_bytes(path, data, private=False):
@@ -184,7 +194,7 @@ class WorkshopService:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.chmod(0o700)
         self.completed_path = self.data_dir / 'completed.json'
-        bundle = Path(program_dir or (Path(sys.executable).parent if getattr(sys, 'frozen', False) else ROOT)).resolve()
+        bundle = Path(program_dir or program_directory()).resolve()
         self.config_directories = {'portable': bundle, 'user': self.data_dir if data_dir is not None or demo else user_config_dir().resolve()}
         self.storage_marker = self.data_dir / 'config-storage.json'
         self.storage_mode = 'user'
@@ -356,6 +366,8 @@ class WorkshopService:
             raise ValueError('请填写有效的模型名称')
         if not isinstance(cfg['steam_libraries'], list) or not all(isinstance(p, str) for p in cfg['steam_libraries']):
             raise ValueError('Steam 库目录格式错误')
+        if type(cfg['aggregate_export']) is not bool:
+            raise ValueError('聚合汉化开关必须为开启或关闭')
         for key, maximum in [('batch_size', 50), ('concurrency', 10)]:
             cfg[key] = int(cfg[key])
             if not 1 <= cfg[key] <= maximum:
@@ -547,7 +559,7 @@ class WorkshopService:
         atomic_bytes(self.completed_path, json.dumps({'format': 'workshop-completed-v1', 'entries': rows}, ensure_ascii=False, indent=2).encode(), private=True)
 
     def load_completed_seed(self):
-        bundle = Path(sys.executable).parent if getattr(sys, 'frozen', False) else ROOT
+        bundle = program_directory()
         if not self.providers_path.exists():
             atomic_bytes(self.providers_path, b'{"format":"workshop-providers-v1","profiles":{}}', private=True)
         seed = bundle / 'completed.json'
@@ -607,6 +619,53 @@ class WorkshopService:
                     if files.get(name) == translated.get(name):
                         files[name] = original
         return files
+
+    def edit_entry(self, identifier, entry_id, replacement):
+        if not isinstance(replacement, str) or len(replacement) > 16000:
+            raise ValueError('原文件行最多 16000 个字符')
+        if any(char in replacement for char in '\r\n\x00\x85\u2028\u2029\ufeff'):
+            raise ValueError('一次只能修改一行，请勿包含换行符或文件头标记')
+        item = self.get_mod(identifier)
+        row = self.cache.browser.get(identifier, entry_id)
+        relative = PurePosixPath(row['source_file'])
+        if relative.is_absolute() or '..' in relative.parts or '\\' in row['source_file'] or relative.suffix.lower() != '.yml':
+            raise ValueError('原文件路径无效')
+        root = Path(item['path']).resolve()
+        source = root.joinpath(*relative.parts)
+        if not source.resolve().is_relative_to(root) or any(path.is_symlink() for path in (source, *source.parents) if path != root and root in path.parents):
+            raise ValueError('不能修改符号链接或 Mod 目录之外的文件')
+        before = source.read_bytes()
+        # EU4 deployments replace English files. Never mistake deployed Chinese
+        # for the source snapshot and overwrite it while editing an English row.
+        if item['game'] == 'eu4' and self.original_sources(item).get(row['source_file']) != before:
+            raise ValueError('该文件目前是回写后的中文，请先恢复英文原文件后再编辑原行')
+        text = before.decode('utf-8-sig')
+        lines = text.splitlines(keepends=True)
+        number = row['line']
+        if not 1 <= number <= len(lines) or lines[number - 1].rstrip('\r\n') != row['original_line']:
+            raise ValueError('原文件已在其他位置修改，请重新扫描后再编辑，避免覆盖新内容')
+        old_line = lines[number - 1]
+        ending = old_line[len(old_line.rstrip('\r\n')):]
+        lines[number - 1] = replacement + ending
+        updated = ''.join(lines).encode('utf-8')
+        if before.startswith(b'\xef\xbb\xbf'):
+            updated = b'\xef\xbb\xbf' + updated
+        backup = None
+        if updated != before:
+            backup = self.data_dir / 'source_backups' / item['appid'] / item['uid'] / (str(time.time_ns()) + '-' + secrets.token_hex(4))
+            backup = backup.joinpath(*relative.parts)
+            atomic_bytes(backup, before, private=True)
+            if source.is_symlink() or not source.resolve().is_relative_to(root) or source.read_bytes() != before:
+                raise ValueError('保存前原文件发生变化，已取消覆盖，请重新扫描')
+            mode = source.stat().st_mode & 0o777
+            atomic_bytes(source, updated)
+            source.chmod(mode)
+            self.log(f'已修改原文件：{source}，第 {number} 行；原文件备份：{backup}')
+        counts = self.analyze(identifier)
+        issue = next((issue for issue in counts['issues'] if issue['file'] == row['source_file'] and issue['line'] == number), None)
+        self.log(f"保存后复查：第 {number} 行{'仍有格式错误' if issue else '未发现格式错误'}；当前 Mod 格式错误 {counts['parse_errors']} 行")
+        return {'file': row['source_file'], 'line': number, 'parse_error': bool(issue),
+                'reason': issue['reason'] if issue else '', 'backup_path': str(backup) if backup else '', 'counts': counts}
 
     def analyze(self, identifier):
         from translation_cache import candidates
@@ -703,9 +762,9 @@ class WorkshopService:
                                     (identifier, now(), item['title'], digest, '已备份', archive(sources), archive(translated), label, json.dumps(item['counts']['origins'], ensure_ascii=False)))
                 version = cursor.lastrowid
         self.log(f'中文文件与英文原文已备份到 SQLite，版本 {version}')
+        aggregate = {'enabled':False, 'pending_deployment':True}
         if deploy:
-            self.restore(version, identifier)
-            item['counts'] = self.cache.stats(item, sources)
+            aggregate = self.restore(version, identifier)['aggregate']
         if issues:
             with self.connect() as db:
                 db.execute('UPDATE versions SET status=? WHERE id=?', (f'{"已回写" if deploy else "已备份"}（{len(issues)} 行保留英文）', version))
@@ -716,7 +775,7 @@ class WorkshopService:
         for problem in issues:
             self.log(f"原文件：{problem['original_file']}，第 {problem['line']} 行\n原因：{problem['reason']}\n原文：{problem['original_line']}")
         self.log(f'任务结束：报错 {len(issues)} 行，已将对应英文原行保留在翻译文件中；完整明细：{workspace / "translation-report.json"}')
-        return {'version_id': version, 'files': len(translated), 'path': item['path'], 'workspace': str(workspace), 'provider': label, 'error_lines': len(issues), 'issues': issues}
+        return {'version_id': version, 'files': len(translated), 'path': item['path'], 'workspace': str(workspace), 'provider': label, 'error_lines': len(issues), 'issues': issues, 'aggregate':aggregate}
 
     def restore(self, version_id, identifier):
         item = self.get_mod(identifier)
@@ -762,8 +821,21 @@ class WorkshopService:
             raise
         with self.connect() as db:
             db.execute("UPDATE versions SET status='已回写' WHERE id=?", (int(version_id),))
+        item['counts'] = self.cache.stats(item, self.original_sources(item))
+        item['scan_state'] = '已扫描'
+        self.persist_item(item)
         self.log(f'已将 {len(files)} 个中文文件复制到 {mod}')
-        return {'files': len(files), 'path': str(mod), 'version_id': int(version_id)}
+        try:
+            from aggregate_export import export
+            aggregate = export(self, item, files, version_id)
+            if aggregate['enabled']:
+                self.log(f"已复制 {aggregate['files']} 个文件到聚合汉化目录：{aggregate['path']}")
+                for warning in aggregate['warnings']:
+                    self.log(warning)
+        except Exception as error:
+            aggregate = {'enabled':True, 'error':f'{type(error).__name__}: {error}'}
+            self.log('原 Mod 已完成回写；聚合汉化复制失败：' + aggregate['error'])
+        return {'files': len(files), 'path': str(mod), 'version_id': int(version_id), 'aggregate':aggregate}
 
 
 def parse_keyvalues(text):
@@ -917,12 +989,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, (ROOT / name).read_bytes(), 'image/x-icon' if self.path == '/favicon.ico' else 'image/svg+xml')
         if self.path in ('/vendor/gsap.min.js', '/vendor/ScrollTrigger.min.js'):
             return self.send(200, (ROOT / self.path.lstrip('/')).read_bytes(), 'text/javascript; charset=utf-8')
+        if self.path == '/entry_browser_ui.js':
+            return self.send(200, (ROOT / 'entry_browser_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
         if not self.authorized():
             return self.send(403, {'error': '访问令牌无效'})
         if self.path == '/api/state':
             service = self.server.service
             return self.send(200, {'config': service.public_config(), 'profiles': service.profiles(), 'mods': list(service.inventory.values()),
-                                   'history': service.history(), 'job': service.status(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo})
+                                   'history': service.history(), 'job': service.status(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
+                                   'app_version': APP_VERSION, 'program_dir': str(program_directory()),
+                                   'aggregate_directory':str(service.data_dir / 'aggregate_mods')})
         self.send(404, {'error': '未找到'})
 
     def do_POST(self):
@@ -936,8 +1012,37 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError('请求格式错误')
+            if self.path == '/api/entries':
+                item = service.get_mod(body['id'])
+                result = service.cache.browser.list(item['id'], body.get('status', 'all'), body.get('query', ''),
+                                                    body.get('page', 1), body.get('page_size', 50))
+                return self.send(200, {**result, 'scan_state': item.get('scan_state', '未扫描'),
+                                       'busy': service.status()['running']})
+            if self.path == '/api/entry-status':
+                with service.lock:
+                    if service.job['running']:
+                        raise ValueError('请等待任务结束后标注条目')
+                    service.get_mod(body['id'])
+                    return self.send(200, service.cache.browser.mark(body['id'], body['entry_id'], body['status']))
+            if self.path == '/api/entry-edit':
+                identifier, entry_id, replacement = body['id'], body['entry_id'], body['text']
+                service.get_mod(identifier)
+                service.cache.browser.get(identifier, entry_id)
+                service.start('edit-entry', lambda: service.edit_entry(identifier, entry_id, replacement))
+                return self.send(202, {'ok': True})
             if self.path == '/api/profile':
                 return self.send(200, service.switch_profile(body['name']))
+            if self.path == '/api/aggregate-config':
+                with service.lock:
+                    if service.job['running']:
+                        raise ValueError('请等待任务结束后切换聚合汉化开关')
+                    result = service.save_config({'aggregate_export':body['enabled']})
+                return self.send(200, result)
+            if self.path == '/api/open-aggregate':
+                folder = service.data_dir / 'aggregate_mods'
+                folder.mkdir(parents=True, exist_ok=True)
+                open_folder(folder)
+                return self.send(200, {'ok':True})
             if self.path == '/api/config-storage':
                 return self.send(200, service.switch_config_storage(body['mode']))
             if self.path == '/api/config':
@@ -1047,6 +1152,15 @@ def self_test():
         assert service.history()[0]['provider']
         assert service.completed_path.is_file()
         assert service.providers_path.is_file()
+        browser = service.cache.browser
+        page = browser.list(item['id'])
+        assert page['ready'] and len(page['entries']) == 2
+        assert page['counts']['translated'] == 2
+        entry_id = page['entries'][0]['entry_id']
+        browser.mark(item['id'], entry_id, 'untranslated')
+        assert browser.list(item['id'], 'untranslated')['total'] == 1
+        browser.mark(item['id'], entry_id, None)
+        assert (ROOT / 'entry_browser_ui.js').is_file()
     print('WORKSHOP_TRANSLATOR_SELF_TEST_OK', flush=True)
 
 
@@ -1072,7 +1186,7 @@ def main():
         return
     server = AppServer(('127.0.0.1', args.port), service)
     url = f'http://127.0.0.1:{server.server_port}'
-    print(f'Workshop 翻译程序：{url}\n数据目录：{service.data_dir}\n按 Ctrl+C 停止', flush=True)
+    print(f'Workshop 翻译程序：{url}\n版本：{APP_VERSION}\n程序目录：{program_directory()}\n数据目录：{service.data_dir}\n按 Ctrl+C 停止', flush=True)
     if not args.no_browser:
         webbrowser.open(url)
     try:

@@ -5,7 +5,7 @@ from pathlib import Path, PurePosixPath
 import zipfile
 
 PROGRAM_FILES = {'WorkshopTranslator.exe', 'workshop_app.py', 'paradox.py',
-                 'request.py', 'translation_cache.py', 'workshop_ui.html',
+                 'request.py', 'translation_cache.py', 'workshop_ui.html', 'entry_browser.py', 'entry_browser_ui.js', 'aggregate_export.py',
                  'rules.json', 'requirements.txt', 'SHA256SUMS.txt',
                  'README.md', 'Windows使用说明.md'}
 

@@ -22,7 +22,7 @@ def build_handoff(destination=None, release=None):
     with zipfile.ZipFile(release) as program:
         for name in ('config.json', 'providers.json', 'completed.json'):
             check(json.loads(program.read('WorkshopTranslator/' + name)))
-    files = ['workshop_app.py', 'paradox.py', 'request.py', 'translation_cache.py',
+    files = ['workshop_app.py', 'paradox.py', 'request.py', 'translation_cache.py', 'entry_browser.py', 'entry_browser_ui.js', 'aggregate_export.py',
              'main.py', 'rules.json', 'workshop_ui.html', 'requirements.txt', '.gitignore',
              'README.md', '性能与改进建议.md', 'Windows使用说明.md', '试运行说明.md', '交接说明.md',
              '启动翻译程序.command', '演示程序.command', '.github/workflows/build-windows.yml']

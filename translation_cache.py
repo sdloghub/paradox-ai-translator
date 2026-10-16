@@ -27,7 +27,8 @@ def entries(files, game, strict=True, issues=None):
                 continue
             if match:
                 result.append({'source_file': filename, 'key': match['prefix'].lstrip(),
-                               'text': paradox.source_text(match, game)})
+                               'text': paradox.source_text(match, game), 'line': number,
+                               'original_line': line.rstrip('\r\n')})
     return result
 
 
@@ -80,6 +81,8 @@ def candidates(path, game):
 class ModCache:
     def __init__(self, service):
         self.service = service
+        from entry_browser import EntryBrowser
+        self.browser = EntryBrowser(service)
         with service.connect() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS translation_entries (
                 mod_id TEXT NOT NULL, source_file TEXT NOT NULL, entry_key TEXT NOT NULL,
@@ -192,22 +195,46 @@ class ModCache:
                 except (UnicodeError, OSError):
                     pass
         origins = {}
+        browser_rows = []
         with self.service.connect() as db:
             history = {}
             cached_rows = {}
-            for filename, key, source_hash, chinese, origin in db.execute('SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=?', (item['id'],)):
+            latest = {}
+            for filename, key, source_hash, chinese, origin in db.execute('SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=? ORDER BY updated_at,rowid', (item['id'],)):
                 history.setdefault((filename, canonical_key(key)), set()).add(source_hash)
                 cached_rows[(filename, key, source_hash)] = (chinese, origin)
+                latest[(filename, canonical_key(key))] = (chinese, origin)
             for entry in current:
                 row = cached_rows.get((entry['source_file'], entry['key'], digest(entry['text'])))
+                status = 'untranslated'
+                chinese, origin = '', ''
+                historical = False
                 if row and request.valid_translation(entry['text'], row[0]):
                     translated += 1
+                    chinese, origin = row
+                    status = 'cached'
                     if local_entries.get(entry['source_file'], {}).get(canonical_key(entry['key'])) == row[0]:
                         deployed += 1
+                        status = 'translated'
                     origins[row[1]] = origins.get(row[1], 0) + 1
                 elif history.get((entry['source_file'], canonical_key(entry['key'])), set()) - {digest(entry['text'])}:
                     needs_update += 1
-        return {'total': len(current) + len(issues), 'skipped_blank': skipped_blank, 'translated': translated, 'deployed': deployed, 'cached': translated - deployed, 'parse_errors': len(issues), 'issues': issues, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
+                    status = 'needs_update'
+                    chinese, origin = latest[(entry['source_file'], canonical_key(entry['key']))]
+                    historical = True
+                browser_rows.append({'source_file': entry['source_file'], 'line': entry['line'],
+                                     'key': canonical_key(entry['key']), 'english': entry['text'],
+                                     'chinese': chinese, 'origin': origin, 'auto_status': status,
+                                     'original_line': entry['original_line'], 'reason': '', 'historical': historical})
+        for issue in issues:
+            raw = issue['original_line']
+            key = raw.split(':', 1)[0].strip()
+            browser_rows.append({'source_file': issue['file'], 'line': issue['line'], 'key': key,
+                                 'english': raw, 'chinese': '', 'origin': '', 'auto_status': 'format_error',
+                                 'original_line': raw, 'reason': issue['reason'], 'historical': False})
+        browser_rows.sort(key=lambda row: (row['source_file'], row['line']))
+        revision = self.browser.replace(item['id'], browser_rows)
+        return {'total': len(current) + len(issues), 'skipped_blank': skipped_blank, 'translated': translated, 'deployed': deployed, 'cached': translated - deployed, 'parse_errors': len(issues), 'issues': issues, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'entry_revision': revision, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 
     def export(self, item):
         with self.service.connect() as db:
