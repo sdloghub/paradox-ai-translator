@@ -25,8 +25,6 @@ with patch.dict(sys.modules, {'openai': sdk}):
     request.load_sdk()
 with patch.dict(sys.modules, {'request': request}):
     paradox = load('translation_paradox_test', 'paradox.py')
-with patch.dict(sys.modules, {'paradox': paradox}):
-    main = load('translation_main_test', 'main.py')
 
 def reply(text):
     return types.SimpleNamespace(choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=text))])
@@ -58,6 +56,18 @@ class TranslationTests(unittest.TestCase):
         sent = client.chat.completions.create.call_args.kwargs['messages'][1]['content']
         self.assertEqual(sent, 'a\n---SEPARATOR---\nb')
         self.assertFalse(request.valid_translation('', '虚构译文'))
+
+    def test_token_only_entries_skip_api_and_preserve_identifiers_strictly(self):
+        token_entries = ['$VALUE$', '£energy£ $VALUE|0$', '§Y[Root.GetName]§! - 100%', '$TABBED_NEW_LINE$- $r_research$']
+        for text in token_entries:
+            self.assertTrue(request.is_token_only(text))
+            self.assertTrue(request.valid_translation(text, text))
+            self.assertFalse(request.valid_translation(text, text + ' £minerals£'))
+        result, client = self.call([token_entries[0], 'Gain $VALUE$ £energy£', token_entries[1]], [reply('获得 $VALUE$ £energy£')])
+        self.assertEqual([r['text'] for r in result], [token_entries[0], '获得 $VALUE$ £energy£', token_entries[1]])
+        self.assertEqual(client.chat.completions.create.call_count, 1)
+        sent = client.chat.completions.create.call_args.kwargs['messages'][1]['content']
+        self.assertEqual(sent, 'Gain $VALUE$ £energy£')
 
     def test_bad_separator_retries_individually(self):
         result, _ = self.call(['a', 'b'], [reply('错误合并'), reply('甲'), ValueError('failure')])
@@ -127,23 +137,6 @@ class TranslationTests(unittest.TestCase):
         self.assertEqual(client.chat.completions.create.call_count, 4)
         self.assertTrue(request.valid_translation('Gain $VALUE$ §Ggold§!', '获得 $VALUE$ §G金币§!'))
 
-    def test_failed_game_keeps_output_and_successful_game_replaces(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(paradox, 'ROOT', Path(directory)), patch.object(main, 'ROOT', Path(directory)):
-            base = Path(directory)
-            source = base / 'localisation/hoi4/test_l_english.yml'
-            source.parent.mkdir(parents=True)
-            source.write_text('l_english:\n a:0 "Alpha"\n')
-            old = base / 'chn/hoi4/old.yml'
-            old.parent.mkdir(parents=True)
-            old.write_text('old output')
-            with patch.object(request, 'request_deepseek_batch', return_value=[{'text': 'Alpha', 'success': False}]):
-                self.assertFalse(main.translate_game('hoi4'))
-            self.assertEqual(old.read_text(), 'old output')
-            with patch.object(request, 'request_deepseek_batch', return_value=[{'text': '甲', 'success': True}]):
-                self.assertTrue(main.translate_game('hoi4'))
-            self.assertFalse(old.exists())
-            self.assertIn('甲', (base / 'chn/hoi4/test_l_simp_chinese.yml').read_text())
-            self.assertTrue(source.exists())
 
     def test_unparseable_entry_is_reported(self):
         with tempfile.TemporaryDirectory() as directory:

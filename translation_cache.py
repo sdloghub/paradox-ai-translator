@@ -46,36 +46,78 @@ def comparable_file(name):
     return '/'.join(parts).replace('l_simp_chinese', 'l_english')
 
 
+def _parse_json_candidates(raw_text):
+    payload = json.loads(raw_text)
+    if not isinstance(payload, dict):
+        raise ValueError('缓存 JSON 必须是对象')
+    if payload.get('format') == FORMAT:
+        return [{**entry, 'mod_id': payload.get('mod_id')} for entry in payload.get('entries', []) if isinstance(entry, dict)]
+    result = []
+    for key, value in payload.items():
+        if isinstance(value, dict) and isinstance(value.get('source_hash'), str):
+            result.append({'key': key, 'text': value.get('text'), 'source_hash': value['source_hash']})
+    return result
+
+
+def _parse_yml_candidates(filename, data, game):
+    text = data.decode('utf-8-sig')
+    chinese_header = bool(re.search(r'^\s*l_simp_chinese\s*:', text, re.M))
+    result = []
+    for entry in entries({str(filename): data}, game, strict=False):
+        if not entry['text'].strip():
+            continue
+        if re.search(r'[\u3400-\u9fff]', entry['text']) or (chinese_header and request.is_token_only(entry['text'])):
+            if chinese_header or game == 'eu4' or not re.search(r'[A-Za-z]{2,}', request.TOKENS.sub('', entry['text'])):
+                result.append(entry)
+    return result
+
+
 def candidates(path, game):
     path = Path(path).expanduser().resolve()
-    paths = sorted(list(path.rglob('*.yml')) + list(path.rglob('*.cache.json'))) if path.is_dir() else [path]
-    result = []
+    paths = sorted(list(path.rglob('*.yml')) + list(path.rglob('*.cache.json')) + list(path.rglob('*.zip'))) if path.is_dir() else [path]
+    json_entries = []
+    yml_entries = []
     for file in paths:
         if file.is_symlink() or not file.is_file():
             continue
         if path.is_dir() and not file.resolve().is_relative_to(path):
             continue
-        if file.suffix.lower() == '.json':
-            payload = json.loads(file.read_text(encoding='utf-8-sig'))
-            if not isinstance(payload, dict):
-                raise ValueError('缓存 JSON 必须是对象')
-            if payload.get('format') == FORMAT:
-                result.extend({**entry, 'mod_id': payload.get('mod_id')} for entry in payload.get('entries', []) if isinstance(entry, dict))
-            else:
-                # Old per-file cache: source_hash is mandatory to accept it.
-                for key, value in payload.items():
-                    if isinstance(value, dict) and isinstance(value.get('source_hash'), str):
-                        result.append({'key': key, 'text': value.get('text'), 'source_hash': value['source_hash']})
-        elif file.suffix.lower() == '.yml':
-            data = file.read_bytes()
-            text = data.decode('utf-8-sig')
-            chinese_header = bool(re.search(r'^\s*l_simp_chinese\s*:', text, re.M))
-            for entry in entries({str(file): data}, game, strict=False):
-                if re.search(r'[\u3400-\u9fff]', entry['text']):
-                    # English-headed files may already contain fully localized Chinese.
-                    if chinese_header or game == 'eu4' or not re.search(r'[A-Za-z]{2,}', request.TOKENS.sub('', entry['text'])):
-                        result.append(entry)
-    return result
+        suffix = file.suffix.lower()
+        if suffix == '.json':
+            json_entries.extend(_parse_json_candidates(file.read_text(encoding='utf-8-sig')))
+        elif suffix == '.yml':
+            yml_entries.extend(_parse_yml_candidates(file, file.read_bytes(), game))
+        elif suffix == '.zip':
+            from workshop_app import unarchive
+            members = unarchive(file.read_bytes())
+            for name, content in sorted(members.items()):
+                lower = name.lower()
+                if lower.endswith('.json'):
+                    json_entries.extend(_parse_json_candidates(content.decode('utf-8-sig')))
+                elif lower.endswith('.yml'):
+                    yml_entries.extend(_parse_yml_candidates(name, content, game))
+    if json_entries and yml_entries:
+        hash_by_file_key = {}
+        hash_by_key = {}
+        for item in json_entries:
+            sh = item.get('source_hash')
+            if isinstance(sh, str):
+                ck = canonical_key(str(item.get('key', '')))
+                if item.get('source_file'):
+                    hash_by_file_key[(comparable_file(item['source_file']), ck)] = (sh, item.get('mod_id'))
+                hash_by_key.setdefault(ck, set()).add((sh, item.get('mod_id')))
+        for item in yml_entries:
+            if not item.get('source_hash'):
+                ck = canonical_key(str(item.get('key', '')))
+                cf = comparable_file(item.get('source_file', ''))
+                match = hash_by_file_key.get((cf, ck))
+                if not match and len(hash_by_key.get(ck, ())) == 1:
+                    match = next(iter(hash_by_key[ck]))
+                if match:
+                    item['source_hash'] = match[0]
+                    if match[1] and not item.get('mod_id'):
+                        item['mod_id'] = match[1]
+    return json_entries + yml_entries
 
 
 class ModCache:
@@ -173,6 +215,9 @@ class ModCache:
                         existing[entry['key']] = {'source_hash': h, 'text': text}
                     elif isinstance(cached, dict) and cached.get('source_hash') == h and request.valid_translation(entry['text'], cached.get('text')):
                         self.put(db, item['id'], entry, cached['text'], origin)
+                    elif request.is_token_only(entry['text']):
+                        existing[entry['key']] = {'source_hash': h, 'text': entry['text']}
+                        self.put(db, item['id'], entry, entry['text'], '自动保留（纯标识符）')
                 after = json.dumps(existing, ensure_ascii=False, indent=2)
                 if not path.exists() or before != after:
                     paradox.atomic_write(path, after)
@@ -205,7 +250,12 @@ class ModCache:
                 cached_rows[(filename, key, source_hash)] = (chinese, origin)
                 latest[(filename, canonical_key(key))] = (chinese, origin)
             for entry in current:
-                row = cached_rows.get((entry['source_file'], entry['key'], digest(entry['text'])))
+                h = digest(entry['text'])
+                row = cached_rows.get((entry['source_file'], entry['key'], h))
+                if not row and request.is_token_only(entry['text']):
+                    self.put(db, item['id'], entry, entry['text'], '自动保留（纯标识符）')
+                    row = (entry['text'], '自动保留（纯标识符）')
+                    cached_rows[(entry['source_file'], entry['key'], h)] = row
                 status = 'untranslated'
                 chinese, origin = '', ''
                 historical = False
@@ -241,3 +291,40 @@ class ModCache:
             rows = db.execute('''SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=?''', (item['id'],)).fetchall()
         return {'format': FORMAT, 'mod_id': item['id'], 'title': item['title'],
                 'entries': [{'source_file': f, 'key': k, 'source_hash': h, 'text': t, 'origin': o} for f, k, h, t, o in rows]}
+
+    def export_package(self, item):
+        from workshop_app import archive, target_path
+        sources = self.service.original_sources(item)
+        # Ensure any local Chinese files in the Mod directory are indexed before exporting.
+        if sources:
+            self.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文')
+        cache_payload = self.export(item)
+        cache_filename = f"{item['id'].replace(':', '-')}.cache.json"
+        package_files = {
+            cache_filename: json.dumps(cache_payload, ensure_ascii=False, indent=2).encode('utf-8')
+        }
+        with self.service.connect() as db:
+            cached_rows = {(f, k, h): t for f, k, h, t in db.execute(
+                'SELECT source_file,entry_key,source_hash,chinese FROM translation_entries WHERE mod_id=?', (item['id'],))}
+        for name, data in sorted(sources.items()):
+            lines = []
+            for line in data.decode('utf-8').splitlines(keepends=True):
+                match = paradox.parse_line(line)
+                if match:
+                    key = match['prefix'].lstrip()
+                    src_text = paradox.source_text(match, item['game'])
+                    translated = cached_rows.get((name, key, digest(src_text)))
+                    if translated is not None and request.valid_translation(src_text, translated):
+                        text = translated.replace('\n', r'\n')
+                        if item['game'] == 'eu4':
+                            text = paradox.special_escape(text, True, True)
+                        text = re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', text)
+                        line = match['prefix'] + '"' + text + '"' + match['suffix'] + (match['newline'] or '')
+                elif item['game'] != 'eu4' and line.lstrip('\ufeff \t').startswith('l_english:'):
+                    line = line.replace('l_english:', 'l_simp_chinese:', 1)
+                lines.append(line)
+            rendered = ''.join(lines).encode('utf-8')
+            if not rendered.startswith(b'\xef\xbb\xbf'):
+                rendered = b'\xef\xbb\xbf' + rendered
+            package_files[target_path(name, item['game'])] = rendered
+        return archive(package_files)

@@ -56,14 +56,7 @@ def build():
         (update, 'WorkshopTranslator-' + VERSION + '-windows-x64-update.zip'),
     ]
     for source, name in assets:
-        if source == release:
-            with zipfile.ZipFile(source) as original, zipfile.ZipFile(destination / name, 'w', zipfile.ZIP_DEFLATED) as public:
-                for item in original.infolist():
-                    if item.filename == 'WorkshopTranslator/交接说明.md':
-                        continue
-                    public.writestr(item, original.read(item))
-        else:
-            shutil.copy2(source, destination / name)
+        shutil.copy2(source, destination / name)
     notes = '''# Workshop Translator v0.1.0-preview.20261014
 
 用于 Paradox 游戏创意工坊 Mod 本地翻译的预览版，支持扫描、AI 翻译、缓存复用、中文备份与恢复。
@@ -103,7 +96,7 @@ def build():
 复制 RELEASE_NOTES.md 作为发布说明，勾选预发布版本。
 将两个 Windows ZIP 和 SHA256SUMS.txt 作为独立附件上传。
 本文件集的外层 ZIP 仅供整理、传递，用户下载应直接选择其中的程序 ZIP 或更新 ZIP。
-GitHub 会为标签自动提供 Source code 下载，不需要上传完整聊天包或开发交接包。
+GitHub 会为标签自动提供 Source code 下载。
 当前仅整理了本地文件，尚未在线创建或发布 GitHub Release。
 '''
     (destination / '发布步骤.txt').write_text(instructions, encoding='utf-8')

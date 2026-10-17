@@ -49,8 +49,6 @@ jobs:
         run: python packaging/benchmark_startup.py --folder dist/WorkshopTranslator/WorkshopTranslator.exe --single dist/benchmark/WorkshopTranslator.exe
       - name: Create program release ZIP
         run: python packaging/build_release.py
-      - name: Create Codex handoff ZIP
-        run: python packaging/build_handoff.py
       - name: Check checksum
         shell: pwsh
         run: |
@@ -64,6 +62,5 @@ jobs:
             dist/SHA256SUMS.txt
             dist/startup-benchmark.json
             dist/WorkshopTranslator-Windows.zip
-            dist/WorkshopTranslator-Codex-Handoff.zip
           if-no-files-found: error
           retention-days: 14

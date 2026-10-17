@@ -47,11 +47,16 @@ def findrule(game):
 # Match script variables, game icons, colour/format tokens and literal escapes.
 TOKENS = re.compile(r'\$[^$\r\n]*\$|\[[^\]\r\n]*\]|£[^£\s]+£?|@[A-Za-z0-9_]+!?|§.|\#(?:[A-Za-z][A-Za-z0-9_]*|!)|\\(?:[nrt"\\])')
 
+def is_token_only(text):
+    """若文本为空白，或剔除全部游戏标识符后不再包含任何英文字母，则视为仅剩标识符/已翻译。"""
+    return not isinstance(text, str) or not re.search(r'[A-Za-z]', TOKENS.sub('', text))
+
 def valid_translation(original, translated):
+    if not isinstance(original, str) or not isinstance(translated, str):
+        return False
     if not original.strip():
         return translated == original
-    return (isinstance(translated, str)
-            and (bool(translated.strip()) or not original.strip())
+    return (bool(translated.strip())
             and "---SEPARATOR---" not in translated
             and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(translated)))
 
@@ -61,14 +66,14 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
         raise ValueError("batch_size 和 pool_size 必须大于零")
     if not tran:
         return []
-    nonblank = [index for index, text in enumerate(tran) if text.strip()]
-    if len(nonblank) != len(tran):
-        # Empty entries are intentional localisation placeholders, not API input.
+    translatable = [index for index, text in enumerate(tran) if not is_token_only(text)]
+    if len(translatable) != len(tran):
+        # 空白或仅含标识符/数字/标点的条目直接视为已翻译，跳过 API 送审并原样保留全部标识符。
         results = [{"text": text, "success": True, "error": None} for text in tran]
-        if nonblank:
-            translated = request_deepseek_batch([tran[index] for index in nonblank], game,
-                al_cnt + len(tran) - len(nonblank), all_len, batch_size, pool_size, config, progress)
-            for index, result in zip(nonblank, translated):
+        if translatable:
+            translated = request_deepseek_batch([tran[index] for index in translatable], game,
+                al_cnt + len(tran) - len(translatable), all_len, batch_size, pool_size, config, progress)
+            for index, result in zip(translatable, translated):
                 results[index] = result
         return results
     config = config or {}

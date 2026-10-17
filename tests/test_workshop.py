@@ -210,31 +210,6 @@ class WorkshopTests(unittest.TestCase):
             again = app.WorkshopService(fresh.data_dir)
             self.assertEqual(again.config()['provider'], '本机提供商')
 
-    def test_handoff_contains_source_context_and_release_and_rejects_secrets(self):
-        import importlib.util
-        import zipfile
-        spec = importlib.util.spec_from_file_location('handoff_builder', ROOT / 'packaging/build_handoff.py')
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        release = self.base / 'program.zip'
-        def write_release(key=''):
-            with zipfile.ZipFile(release, 'w') as archive:
-                for name in ('config.json', 'providers.json', 'completed.json'):
-                    archive.writestr('WorkshopTranslator/' + name, json.dumps({'api_key': key}))
-        write_release()
-        destination = self.base / 'handoff.zip'
-        module.build_handoff(destination, release)
-        original = destination.read_bytes()
-        with zipfile.ZipFile(destination) as archive:
-            names = archive.namelist()
-            self.assertIn('WorkshopTranslator-Handoff/source/tests/test_workshop.py', names)
-            self.assertIn('WorkshopTranslator-Handoff/source/交接说明.md', names)
-            self.assertEqual(archive.read('WorkshopTranslator-Handoff/Windows/WorkshopTranslator-Windows.zip'), release.read_bytes())
-            self.assertFalse(any('/app_data' in name or '/.git/' in name or name.endswith('.sqlite3') for name in names))
-        write_release('fake-secret')
-        with self.assertRaises(ValueError):
-            module.build_handoff(destination, release)
-        self.assertEqual(destination.read_bytes(), original)
 
     def test_switch_saved_profiles_uses_matching_key_and_preserves_libraries(self):
         self.service.save_config({'config_name': '日常翻译', 'provider': '提供商', 'model': 'model-a', 'api_key': 'key-a'})
@@ -685,6 +660,51 @@ class WorkshopTests(unittest.TestCase):
         result = self.service.import_cache(item['id'], external)
         self.assertEqual(result['imported'], 0)
         self.assertEqual(result['untranslated'], 2)
+
+    def test_export_package_includes_chinese_yml_and_hash_cache_and_roundtrips(self):
+        self.chinese_file()
+        item = self.scan()[0]
+        zip_bytes = self.service.export_package(item['id'])
+        members = app.unarchive(zip_bytes)
+        self.assertIn('394360-123456.cache.json', members)
+        self.assertIn('localisation/simp_chinese/test_l_simp_chinese.yml', members)
+        yml_text = members['localisation/simp_chinese/test_l_simp_chinese.yml'].decode('utf-8-sig')
+        self.assertIn('l_simp_chinese:', yml_text)
+        self.assertIn('甲 $VALUE$', yml_text)
+        cache_data = json.loads(members['394360-123456.cache.json'].decode('utf-8'))
+        self.assertEqual(cache_data['mod_id'], item['id'])
+        self.assertEqual(len(cache_data['entries']), 1)
+
+        zip_path = self.base / 'exported_package.zip'
+        zip_path.write_bytes(zip_bytes)
+        another = app.WorkshopService(self.base / 'fresh_zip')
+        another.save_config({'steam_libraries': [str(self.library)]})
+        (self.mod / 'localisation/simp_chinese/test_l_simp_chinese.yml').unlink()
+        another.scan(lambda ids: {})
+        imported = another.import_cache(item['id'], zip_path, provider='')
+        self.assertEqual(imported['imported'], 1)
+        self.assertTrue(imported['provider'].startswith('翻译-'))
+        self.source.write_text('l_english:\n key:0 "Beta $VALUE$"\n')
+        stale = another.import_cache(item['id'], zip_path, provider='测试译者')
+        self.assertEqual(stale['untranslated'], 1)
+        self.assertGreater(stale['rejected'], 0)
+
+    def test_frontend_ui_themes_collapsible_panels_and_separated_import_export(self):
+        html = (ROOT / 'workshop_ui.html').read_text(encoding='utf-8')
+        js = (ROOT / 'entry_browser_ui.js').read_text(encoding='utf-8')
+        for theme in ('data-theme="light"', 'data-theme="dark"', 'data-theme="hc-light"', 'data-theme="hc-dark"'):
+            self.assertIn(theme, html)
+        self.assertIn('<details class="card wide collapsible-panel entry-browser" id="entry_browser"', html)
+        self.assertIn('<details class="card wide collapsible-panel" id="history_panel">', html)
+        self.assertNotIn("row.auto_status === 'format_error' ||", js)
+        self.assertIn('id="import_btn"', html)
+        self.assertIn('id="export_btn"', html)
+        self.assertIn('id="import_step1_dialog"', html)
+        self.assertIn('id="import_step2_dialog"', html)
+        self.assertIn('可留空自动命名', html)
+        self.assertIn('function modSortGroup(mod)', html)
+        self.assertIn('--ai-bg:', html)
+        self.assertIn('--scan-bg:', html)
 
 if __name__ == '__main__':
     unittest.main()

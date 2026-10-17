@@ -49,7 +49,7 @@ def build_release(destination=None, data_dir=None, executable=None):
         finally:
             connection.close()
     files = ['workshop_app.py', 'paradox.py', 'request.py', 'translation_cache.py', 'entry_browser.py', 'entry_browser_ui.js', 'aggregate_export.py',
-             'workshop_ui.html', 'rules.json', 'requirements.txt', 'Windows使用说明.md', 'README.md', '性能与改进建议.md', '交接说明.md']
+             'workshop_ui.html', 'rules.json', 'requirements.txt', 'Windows使用说明.md', 'README.md', '性能与改进建议.md']
     files += [str(p.relative_to(ROOT)) for folder in ('vendor', 'assets', 'packaging')
               for p in (ROOT / folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
     destination.parent.mkdir(parents=True, exist_ok=True)

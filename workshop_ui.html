@@ -1,57 +1,511 @@
 <!doctype html>
-<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workshop · Mod 翻译</title><link rel="icon" href="/favicon.ico">
+<html lang="zh-CN" data-theme="light"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workshop · Mod 翻译</title><link rel="icon" href="/favicon.ico">
 <style>
-:root{color-scheme:light;--ink:#2f3437;--muted:#787774;--green:#346538;--line:#eaeaea;--canvas:#f7f6f3}*{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.6 'Cabinet Grotesk','SF Pro Display','Helvetica Neue','Segoe UI','PingFang SC',sans-serif}header{padding:22px 5vw;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fbfbfa}.eyebrow{font-size:12px;font-weight:650;letter-spacing:.03em;color:var(--ink)}h1{font:500 clamp(28px,3vw,42px)/1.15 'Newsreader','Songti SC',serif;letter-spacing:-.03em;margin:12px 0;max-width:72rem}h2{font-size:17px;letter-spacing:-.02em;margin:0 0 18px}.sub{color:var(--muted);font-size:12px;line-height:1.8}main{max-width:1440px;margin:40px auto;padding:0 5vw;overflow-x:hidden;width:100%}.workflow{display:flex;gap:20px;padding:0 0 32px;color:var(--muted);font-size:12px}.workflow b{color:var(--ink)}.grid{display:grid;grid-auto-flow:dense;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;align-items:start}.card{background:#fff;border:1px solid #eaeaea;border-radius:8px;padding:28px;min-width:0}button{border:1px solid #eaeaea;border-radius:5px;padding:10px 14px;background:#fff;color:var(--ink);cursor:pointer;font:inherit;font-size:12px;transition:transform .2s,background .2s}button.primary{background:#111;color:#fff;border-color:#111}button:hover{background:#f7f6f3}button.primary:hover{background:#333}button:active{transform:scale(.98)}button:disabled{opacity:.45;cursor:default}button:focus-visible,.mod:focus-visible{outline:2px solid #787774;outline-offset:3px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}input,textarea,select{font:inherit;background:#fbfbfa;color:var(--ink);border:1px solid #eaeaea;border-radius:5px;padding:11px 12px;width:100%}label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px}.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}input:focus,textarea:focus{outline:2px solid #ddd;outline-offset:1px}.categories{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid #eaeaea;margin-top:18px;padding-bottom:2px}.category{border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 9px;background:transparent;color:var(--muted)}.category[aria-selected=true]{border-bottom-color:#111;color:#111;font-weight:650}.category span{font:10px 'Geist Mono',monospace;margin-left:5px;color:var(--muted)}.mods{margin-top:12px;max-height:480px;overflow:auto}.mod{display:block;text-align:left;width:100%;padding:17px 12px;border:0;border-bottom:1px solid #eaeaea;cursor:pointer;border-radius:0;background:#fff}.mod:hover{background:#fbfbfa}.mod.selected{background:#f7f6f3;border-left:3px solid #111;padding-left:9px}.mod strong{display:block;font-size:14px;line-height:1.6;margin-bottom:5px}.badge{display:inline-block;background:#edf3ec;color:#346538;border-radius:999px;padding:3px 8px;font-size:10px}.empty{padding:48px 18px;color:var(--muted);line-height:1.9;text-align:center;font-size:13px}.path{font:12px/1.8 'Geist Mono','SF Mono',monospace;color:var(--muted);word-break:break-all}.notice{background:#fbf3db;border-radius:5px;padding:15px;color:#756039;font-size:12px;line-height:1.8;margin:20px 0}a{color:var(--ink)}.wide{margin-top:32px}table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:left;padding:14px 8px;border-bottom:1px solid #eaeaea}th{font-size:11px;color:var(--muted);font-weight:500}.logs{background:#f7f6f3;color:#535652;padding:20px;border:1px solid #eaeaea;border-radius:5px;white-space:pre-wrap;max-height:230px;overflow:auto;font:12px/1.9 'Geist Mono','SF Mono',monospace}.status{font-size:11px;color:var(--muted)}#toast{display:none;padding:12px 18px;background:#fbf3db;color:#956400;border:1px solid #eaeaea;border-radius:5px;margin-bottom:24px}details{border-bottom:1px solid #eaeaea;padding-bottom:18px}details summary{cursor:pointer;font-size:13px;font-weight:600;list-style:none}details summary:after{content:'+';float:right;color:var(--muted)}details[open] summary:after{content:'−'}footer{padding:32px 0;color:var(--muted);font-size:11px}.count-bar{margin-top:15px;padding-top:12px;border-top:1px solid #eaeaea}.library-note{margin:12px 0 18px}.translation-counts{display:grid;grid-auto-flow:dense;grid-template-columns:repeat(5,1fr);border:1px solid #eaeaea;margin:24px 0}.translation-counts div{padding:16px 10px;text-align:center}.translation-counts div+div{border-left:1px solid #eaeaea}.translation-counts b{display:block;font-size:24px;font-weight:500;color:var(--ink)}.translation-counts span{font-size:11px;color:var(--muted)}button.scan-action{background:#b94d19;border-color:#b94d19;color:#fff;font-weight:650;padding:12px 18px}button.scan-action:hover{background:#923b12}button.scan-action:focus-visible{outline:3px solid #e8ac8e;outline-offset:3px}button.ai-action{background:#245cc7;border-color:#245cc7;color:#fff;font-weight:650;padding:12px 22px}button.ai-action:hover{background:#19499f;border-color:#19499f}button.ai-action:focus-visible{outline:3px solid #8bb2ff;outline-offset:3px}dialog{width:min(560px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #eaeaea;border-radius:8px;max-width:520px;padding:28px}dialog::backdrop{background:rgba(30,30,30,.24)}@media(max-width:500px){.translation-counts div{padding:12px 4px}.translation-counts b{font-size:20px}}@media(max-width:850px){.grid{grid-template-columns:1fr}main{padding:0 20px;margin-top:28px}.card{padding:22px}.workflow{flex-wrap:wrap;gap:12px}header{padding:22px 20px;align-items:flex-start;gap:16px}table{display:block;overflow:auto}}@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+:root,[data-theme="light"]{
+  color-scheme:light;
+  --canvas:#f8fafc;
+  --surface:#ffffff;
+  --surface-subtle:#f1f5f9;
+  --ink:#0f172a;
+  --muted:#64748b;
+  --line:#e2e8f0;
+  --line-strong:#cbd5e1;
+  --accent:#4f46e5;
+  --accent-fg:#ffffff;
+  --accent-hover:#4338ca;
+  --ai-bg:#2563eb;
+  --ai-fg:#ffffff;
+  --ai-hover:#1d4ed8;
+  --scan-bg:#0d9488;
+  --scan-fg:#ffffff;
+  --scan-hover:#0f766e;
+  --selected-bg:#eef2ff;
+  --selected-border:#4f46e5;
+  --focus-ring:#6366f1;
+  --backdrop:rgba(15,23,42,.38);
+  --ok-bg:#ecfdf5;--ok-fg:#059669;--ok-border:#a7f3d0;
+  --info-bg:#eff6ff;--info-fg:#0284c7;--info-border:#bae6fd;
+  --warn-bg:#fffbeb;--warn-fg:#d97706;--warn-border:#fde68a;
+  --err-bg:#fff1f2;--err-fg:#e11d48;--err-border:#fecdd3;
+  --purple-bg:#f5f3ff;--purple-fg:#7c3aed;--purple-border:#ddd6fe;
+}
+[data-theme="dark"]{
+  color-scheme:dark;
+  --canvas:#0b0f17;
+  --surface:#111827;
+  --surface-subtle:#1e293b;
+  --ink:#f1f5f9;
+  --muted:#94a3b8;
+  --line:#263248;
+  --line-strong:#334155;
+  --accent:#818cf8;
+  --accent-fg:#0b0f17;
+  --accent-hover:#a5b4fc;
+  --ai-bg:#6366f1;
+  --ai-fg:#ffffff;
+  --ai-hover:#4f46e5;
+  --scan-bg:#0d9488;
+  --scan-fg:#ffffff;
+  --scan-hover:#14b8a6;
+  --selected-bg:rgba(99,102,241,.14);
+  --selected-border:#818cf8;
+  --focus-ring:#818cf8;
+  --backdrop:rgba(2,6,23,.72);
+  --ok-bg:rgba(16,185,129,.14);--ok-fg:#34d399;--ok-border:rgba(52,211,153,.35);
+  --info-bg:rgba(14,165,233,.14);--info-fg:#38bdf8;--info-border:rgba(56,189,248,.35);
+  --warn-bg:rgba(245,158,11,.14);--warn-fg:#fbbf24;--warn-border:rgba(251,191,36,.35);
+  --err-bg:rgba(244,63,94,.14);--err-fg:#fb7185;--err-border:rgba(251,113,133,.35);
+  --purple-bg:rgba(168,85,247,.14);--purple-fg:#c084fc;--purple-border:rgba(192,132,252,.35);
+}
+[data-theme="hc-light"]{
+  color-scheme:light;
+  --canvas:#ffffff;
+  --surface:#ffffff;
+  --surface-subtle:#f1f5f9;
+  --ink:#000000;
+  --muted:#1e293b;
+  --line:#0f172a;
+  --line-strong:#000000;
+  --accent:#1d4ed8;
+  --accent-fg:#ffffff;
+  --accent-hover:#1e3a8a;
+  --ai-bg:#6d28d9;
+  --ai-fg:#ffffff;
+  --ai-hover:#4c1d95;
+  --scan-bg:#047857;
+  --scan-fg:#ffffff;
+  --scan-hover:#065f46;
+  --selected-bg:#dbeafe;
+  --selected-border:#1d4ed8;
+  --focus-ring:#1d4ed8;
+  --backdrop:rgba(0,0,0,.6);
+  --ok-bg:#d1fae5;--ok-fg:#064e3b;--ok-border:#047857;
+  --info-bg:#e0f2fe;--info-fg:#0c4a6e;--info-border:#0369a1;
+  --warn-bg:#fef3c7;--warn-fg:#78350f;--warn-border:#b45309;
+  --err-bg:#ffe4e6;--err-fg:#881337;--err-border:#be123c;
+  --purple-bg:#ede9fe;--purple-fg:#4c1d95;--purple-border:#6d28d9;
+}
+[data-theme="hc-dark"]{
+  color-scheme:dark;
+  --canvas:#000000;
+  --surface:#070a12;
+  --surface-subtle:#111827;
+  --ink:#ffffff;
+  --muted:#e2e8f0;
+  --line:#94a3b8;
+  --line-strong:#ffffff;
+  --accent:#22d3ee;
+  --accent-fg:#000000;
+  --accent-hover:#67e8f9;
+  --ai-bg:#c084fc;
+  --ai-fg:#000000;
+  --ai-hover:#d8b4fe;
+  --scan-bg:#fbbf24;
+  --scan-fg:#000000;
+  --scan-hover:#fde047;
+  --selected-bg:#172554;
+  --selected-border:#22d3ee;
+  --focus-ring:#22d3ee;
+  --backdrop:rgba(0,0,0,.85);
+  --ok-bg:#022c22;--ok-fg:#4ade80;--ok-border:#4ade80;
+  --info-bg:#082f49;--info-fg:#38bdf8;--info-border:#38bdf8;
+  --warn-bg:#451a03;--warn-fg:#facc15;--warn-border:#facc15;
+  --err-bg:#4c0519;--err-fg:#fb7185;--err-border:#fb7185;
+  --purple-bg:#2e1065;--purple-fg:#e879f9;--purple-border:#e879f9;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.6 'Inter','-apple-system','BlinkMacSystemFont','SF Pro Text','Segoe UI','PingFang SC',sans-serif;-webkit-font-smoothing:antialiased}
+header{padding:20px 5vw;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;border-bottom:1px solid var(--line);background:var(--surface)}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--accent)}
+h1{font:600 clamp(24px,2.4vw,34px)/1.2 'Inter','-apple-system','BlinkMacSystemFont','PingFang SC',sans-serif;letter-spacing:-.03em;margin:10px 0 6px;max-width:72rem}
+h2{font-size:16px;font-weight:600;letter-spacing:-.02em;margin:0 0 16px}
+.sub{color:var(--muted);font-size:12px;line-height:1.75}
+.header-controls{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.theme-switcher{display:inline-flex;background:var(--surface-subtle);border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+.theme-btn{border:0;border-radius:4px;padding:5px 10px;background:transparent;color:var(--muted);font-size:11px;font-weight:500;cursor:pointer;transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:5px}
+.theme-btn:hover{color:var(--ink);background:transparent}
+.theme-btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.theme-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+main{max-width:1440px;margin:32px auto;padding:0 5vw;overflow-x:hidden;width:100%}
+.workflow{display:flex;gap:16px;padding:0 0 24px;color:var(--muted);font-size:12px;align-items:center}
+.workflow span:nth-child(odd){padding:3px 9px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--ink);font-weight:500}
+.grid{display:grid;grid-auto-flow:dense;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:24px;min-width:0}
+button{border:1px solid var(--line);border-radius:6px;padding:9px 14px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit;font-size:12px;font-weight:500;transition:background .15s,border-color .15s,transform .15s}
+button:hover{background:var(--surface-subtle);border-color:var(--line-strong)}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+button.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+button.scan-action{background:var(--scan-bg);border-color:var(--scan-bg);color:var(--scan-fg);font-weight:600;padding:10px 16px}
+button.scan-action:hover{background:var(--scan-hover);border-color:var(--scan-hover)}
+button.ai-action{background:var(--ai-bg);border-color:var(--ai-bg);color:var(--ai-fg);font-weight:600;padding:10px 20px}
+button.ai-action:hover{background:var(--ai-hover);border-color:var(--ai-hover)}
+button:active{transform:scale(.99)}
+button:disabled{opacity:.42;cursor:default;transform:none}
+button:focus-visible,.mod:focus-visible,summary:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grow{flex:1}
+input,textarea,select{font:inherit;background:var(--surface-subtle);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:10px 12px;width:100%;transition:border-color .15s}
+label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;font-weight:500}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--focus-ring)}
+.categories{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line);margin-top:16px;padding-bottom:1px}
+.category{border:0;border-bottom:2px solid transparent;border-radius:0;padding:9px 10px;background:transparent;color:var(--muted);font-weight:500}
+.category:hover{background:transparent;color:var(--ink)}
+.category[aria-selected=true]{border-bottom-color:var(--accent);color:var(--accent);font-weight:600}
+.category span{font:10px 'Geist Mono','SF Mono',monospace;margin-left:5px;padding:1px 5px;border-radius:999px;background:var(--surface-subtle);color:var(--muted)}
+.category[aria-selected=true] span{background:var(--selected-bg);color:var(--accent)}
+.mods{margin-top:8px;max-height:480px;overflow:auto}
+.mod{display:block;text-align:left;width:100%;padding:15px 12px;border:0;border-bottom:1px solid var(--line);cursor:pointer;border-radius:0;background:var(--surface);color:var(--ink)}
+.mod:hover{background:var(--surface-subtle)}
+.mod.selected{background:var(--selected-bg);border-left:3px solid var(--selected-border);padding-left:9px}
+.mod strong{display:block;font-size:13px;font-weight:600;line-height:1.5;margin-bottom:5px}
+.badge{display:inline-block;background:var(--surface-subtle);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:10px;font-weight:500}
+.badge.ok{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-border)}
+.badge.info{background:var(--info-bg);color:var(--info-fg);border-color:var(--info-border)}
+.badge.warn{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-border)}
+.badge.err{background:var(--err-bg);color:var(--err-fg);border-color:var(--err-border)}
+.badge.purple{background:var(--purple-bg);color:var(--purple-fg);border-color:var(--purple-border)}
+.empty{padding:40px 18px;color:var(--muted);line-height:1.85;text-align:center;font-size:13px}
+.path{font:12px/1.75 'Geist Mono','SF Mono',monospace;color:var(--muted);word-break:break-all}
+.notice{background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;padding:13px 15px;color:var(--warn-fg);font-size:12px;line-height:1.75;margin:16px 0}
+a{color:var(--accent)}
+.wide{margin-top:20px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{text-align:left;padding:13px 8px;border-bottom:1px solid var(--line)}
+th{font-size:11px;color:var(--muted);font-weight:500}
+.logs{background:var(--surface-subtle);color:var(--ink);padding:18px;border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;max-height:230px;overflow:auto;font:12px/1.85 'Geist Mono','SF Mono',monospace}
+.status{font-size:11px;color:var(--muted)}
+#toast{display:none;padding:12px 16px;background:var(--info-bg);color:var(--info-fg);border:1px solid var(--info-border);border-radius:6px;margin-bottom:20px;font-size:12px}
+details{border-bottom:1px solid var(--line);padding-bottom:14px}
+details summary{cursor:pointer;font-size:13px;font-weight:600;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary:after{content:'+';float:right;color:var(--accent);font-family:'SF Mono',monospace;font-weight:600}
+details[open]>summary:after{content:'−'}
+details.collapsible-panel{padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+details.collapsible-panel>summary.panel-summary{padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;user-select:none;transition:background .15s}
+details.collapsible-panel>summary.panel-summary:hover{background:var(--surface-subtle)}
+details.collapsible-panel>summary.panel-summary:after{float:none;font-size:16px;line-height:1;margin-left:8px}
+details.collapsible-panel[open]>summary.panel-summary{border-bottom:1px solid var(--line);background:var(--surface-subtle)}
+.panel-summary-main{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;flex:1}
+.panel-summary-main h2{margin:0;font-size:15px}
+.panel-body{padding:22px 24px}
+footer{padding:28px 0;color:var(--muted);font-size:11px}
+.count-bar{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.library-note{margin:8px 0 14px}
+.translation-counts{display:grid;grid-auto-flow:dense;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);margin:20px 0}
+.translation-counts div{padding:14px 8px;text-align:center}
+.translation-counts div+div{border-left:1px solid var(--line)}
+.translation-counts b{display:block;font-size:22px;font-weight:600;color:var(--ink)}
+.translation-counts div:nth-child(1) b{color:var(--ok-fg)}
+.translation-counts div:nth-child(2) b{color:var(--info-fg)}
+.translation-counts div:nth-child(3) b{color:var(--purple-fg)}
+.translation-counts div:nth-child(4) b{color:var(--warn-fg)}
+.translation-counts div:nth-child(5) b{color:var(--err-fg)}
+.translation-counts span{font-size:11px;color:var(--muted)}
+dialog{inset:0;margin:auto;width:min(540px,calc(100vw - 32px));max-height:85vh;overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;max-width:520px;padding:24px}
+dialog::backdrop{background:var(--backdrop)}
+.step-badge{display:inline-block;font:600 10px/1 'Geist Mono','SF Mono',monospace;padding:4px 8px;border-radius:4px;background:var(--purple-bg);border:1px solid var(--purple-border);color:var(--purple-fg);margin-bottom:8px}
+.selected-path-box{background:var(--surface-subtle);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:10px 0}
+@media(max-width:500px){.translation-counts div{padding:10px 4px}.translation-counts b{font-size:18px}}
+@media(max-width:850px){.grid{grid-template-columns:1fr}main{padding:0 20px;margin-top:24px}.card{padding:20px}.workflow{flex-wrap:wrap;gap:10px}header{padding:18px 20px;flex-direction:column;align-items:flex-start;gap:14px}.header-controls{align-items:flex-start;width:100%}table{display:block;overflow:auto}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
-.entry-browser{scroll-margin-top:24px}.entry-toolbar{display:grid;grid-template-columns:minmax(160px,1fr) auto;gap:12px;margin:22px 0 12px}.entry-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}.entry-filter[aria-pressed=true]{background:#2f3437;color:#fff;border-color:#2f3437}.entry-filter span{margin-left:8px;font-family:'SF Mono',monospace}.entry-table-wrap{overflow:auto}.entry-table{table-layout:fixed;min-width:760px}.entry-table th:nth-child(1){width:23%}.entry-table th:nth-child(2),.entry-table th:nth-child(3){width:29%}.entry-table th:nth-child(4){width:19%}.entry-table td{vertical-align:top;padding:20px 12px}.entry-key{font:600 12px/1.6 'SF Mono',monospace;overflow-wrap:anywhere}.entry-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:190px;overflow:auto;line-height:1.8}.entry-original{margin-top:12px;padding-bottom:8px}.entry-original summary{font-size:11px;font-weight:400}.entry-original pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.7 'SF Mono',monospace}.entry-status-label{margin-top:10px;font-size:11px}.entry-table select{padding:7px;font-size:11px}.entry-badge{display:inline-block;font-size:11px;padding:3px 8px;background:#f7f6f3;border-radius:4px}.entry-badge.translated{background:#edf3ec;color:#346538}.entry-badge.cached{background:#e1f3fe;color:#1f6c9f}.entry-badge.format_error{background:#fdebec;color:#9f2f2d}.entry-badge.needs_update{background:#fbf3db;color:#956400}.entry-error{font-size:11px;line-height:1.8;color:#9f2f2d;margin-top:10px}.entry-pagination{margin-top:20px}#entry_note{margin-bottom:14px}@media(max-width:600px){.entry-toolbar{grid-template-columns:1fr}.entry-table{display:table}.entry-browser .row h2{flex-basis:100%}}
+.entry-browser{scroll-margin-top:20px}
+.entry-toolbar{display:grid;grid-template-columns:minmax(160px,1fr) auto;gap:10px;margin:16px 0 12px}
+.entry-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.entry-filter[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.entry-filter span{margin-left:6px;font-family:'SF Mono',monospace}
+.entry-table-wrap{overflow:auto}
+.entry-table{table-layout:fixed;min-width:760px}
+.entry-table th:nth-child(1){width:23%}
+.entry-table th:nth-child(2),.entry-table th:nth-child(3){width:29%}
+.entry-table th:nth-child(4){width:19%}
+.entry-table td{vertical-align:top;padding:16px 10px}
+.entry-key{font:600 12px/1.6 'SF Mono',monospace;overflow-wrap:anywhere;color:var(--accent)}
+.entry-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:190px;overflow:auto;line-height:1.75}
+.entry-original{margin-top:10px;padding-bottom:6px;border-bottom:0}
+.entry-original summary{font-size:11px;font-weight:500;color:var(--muted)}
+.entry-original pre{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.7 'SF Mono',monospace;background:var(--surface-subtle);border:1px solid var(--line);border-radius:4px;padding:8px;margin:6px 0 0}
+.entry-status-label{margin-top:10px;font-size:11px}
+.entry-table select{padding:6px 8px;font-size:11px}
+.entry-badge{display:inline-block;font-size:11px;padding:2px 8px;background:var(--surface-subtle);border:1px solid var(--line);border-radius:4px;font-weight:500}
+.entry-badge.translated{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-border)}
+.entry-badge.cached{background:var(--info-bg);color:var(--info-fg);border-color:var(--info-border)}
+.entry-badge.untranslated{background:var(--purple-bg);color:var(--purple-fg);border-color:var(--purple-border)}
+.entry-badge.format_error{background:var(--err-bg);color:var(--err-fg);border-color:var(--err-border)}
+.entry-badge.needs_update{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-border)}
+.entry-error{font-size:11px;line-height:1.75;color:var(--err-fg);margin-top:8px}
+.entry-pagination{margin-top:18px}
+#entry_note{margin-bottom:12px}
+@media(max-width:600px){.entry-toolbar{grid-template-columns:1fr}.entry-table{display:table}}
 
-.translation-summary{border:1px solid #eaeaea;border-radius:5px;margin:24px 0;overflow:hidden}.translation-total{padding:18px;text-align:center;border-bottom:1px solid #eaeaea;background:#fbfbfa}.translation-total b{display:block;font-size:32px;font-weight:500;line-height:1.3}.translation-total span{font-size:12px;color:var(--muted)}.translation-summary .translation-counts{border:0;margin:0}.entry-editor{margin-top:14px;padding-top:12px;border-top:1px solid #eaeaea}.entry-editor summary{font-size:12px}.entry-editor textarea{font:12px/1.7 'SF Mono',monospace;resize:vertical;min-height:90px;margin-bottom:10px}.entry-editor button{padding:8px 10px;font-size:11px}.entry-editor .sub{margin-top:8px}.entry-edit-result{white-space:pre-wrap;overflow-wrap:anywhere}.entry-edit-result[data-error=true]{background:#fdebec;color:#9f2f2d}
-.aggregate-panel{margin-bottom:24px}.aggregate-panel h2{margin-bottom:12px}.aggregate-switch{display:flex;align-items:center;gap:10px;margin:0 0 12px;color:var(--ink);font-size:13px;cursor:pointer}.aggregate-switch input{width:18px;height:18px;accent-color:#346538}.aggregate-panel .path{margin-top:10px}</style>
-<header><div><div class="eyebrow" style="display:flex;align-items:center;gap:10px"><img src="/assets/app-icon.svg" width="36" height="36" alt="Workshop Translator 图标">Workshop Translator</div><h1>你的模组，本地翻译工作台。</h1><div class="sub">本地扫描 · 缓存续译 · 中文备份与恢复</div></div><div><button id="open_entry_library" class="primary">条目浏览库</button><div class="badge" id="mode" style="margin-top:12px">Windows / macOS 本地版</div></div></header>
-<main><div id="toast" role="alert"></div><div class="workflow"><span>配置接口</span><span>→</span><span>刷新目录 / 扫描 Mod</span><span>→</span><span>翻译并回写</span><span>→</span><span>备份与一键复制</span></div>
+.translation-summary{border:1px solid var(--line);border-radius:6px;margin:20px 0;overflow:hidden}
+.translation-total{padding:16px;text-align:center;border-bottom:1px solid var(--line);background:var(--surface-subtle)}
+.translation-total b{display:block;font-size:30px;font-weight:600;line-height:1.25;color:var(--accent)}
+.translation-total span{font-size:12px;color:var(--muted)}
+.translation-summary .translation-counts{border:0;margin:0}
+.entry-editor{margin-top:10px;padding:8px 0 0;border-top:1px solid var(--line);border-bottom:0}
+.entry-editor summary{font-size:11px;font-weight:500;color:var(--muted)}
+.entry-editor textarea{font:12px/1.7 'SF Mono',monospace;resize:vertical;min-height:84px;margin-bottom:8px}
+.entry-editor button{padding:7px 10px;font-size:11px}
+.entry-editor .sub{margin-top:6px}
+.entry-edit-result{white-space:pre-wrap;overflow-wrap:anywhere}
+.entry-edit-result[data-error=true]{background:var(--err-bg);color:var(--err-fg);border-color:var(--err-border)}
+.aggregate-panel{margin-bottom:20px;border-top:3px solid var(--accent)}
+.aggregate-panel h2{margin-bottom:10px}
+.aggregate-switch{display:flex;align-items:center;gap:10px;margin:0 0 10px;color:var(--ink);font-size:13px;cursor:pointer}
+.aggregate-switch input{width:16px;height:16px;accent-color:var(--accent)}
+.aggregate-panel .path{margin-top:8px}
+</style>
+<header>
+  <div>
+    <div class="eyebrow" style="display:flex;align-items:center;gap:10px"><img src="/assets/app-icon.svg" width="32" height="32" alt="Workshop Translator 图标">Workshop Translator</div>
+    <h1>你的模组，本地翻译工作台。</h1>
+    <div class="sub">本地扫描 · 缓存续译 · 中文备份与恢复</div>
+  </div>
+  <div class="header-controls">
+    <div class="theme-switcher" id="theme_switcher" role="group" aria-label="界面主题配色">
+      <button type="button" class="theme-btn" data-theme-opt="light" aria-pressed="true"><span class="theme-dot" style="background:#4f46e5"></span>极简日间</button>
+      <button type="button" class="theme-btn" data-theme-opt="dark" aria-pressed="false"><span class="theme-dot" style="background:#818cf8"></span>极简夜间</button>
+      <button type="button" class="theme-btn" data-theme-opt="hc-light" aria-pressed="false"><span class="theme-dot" style="background:#047857"></span>高对比日间</button>
+      <button type="button" class="theme-btn" data-theme-opt="hc-dark" aria-pressed="false"><span class="theme-dot" style="background:#22d3ee"></span>高对比夜间</button>
+    </div>
+    <div class="row">
+      <span class="badge purple" id="mode">Windows / macOS 本地版</span>
+      <button id="open_entry_library">展开条目浏览库</button>
+    </div>
+  </div>
+</header>
+<main><div id="toast" role="alert"></div><div class="workflow"><span>配置接口</span><span>→</span><span>刷新目录 / 扫描 Mod</span><span>→</span><span>翻译并回写</span><span>→</span><span>导入 / 导出与备份</span></div>
 <section class="card aggregate-panel" aria-labelledby="aggregate_title"><div class="row"><div class="grow"><h2 id="aggregate_title">聚合汉化目录</h2><label class="aggregate-switch" for="aggregate_export"><input id="aggregate_export" type="checkbox" checked>回写完成后，再复制一份到聚合目录（所有 Mod）</label></div><button id="open_aggregate">打开聚合文件夹</button></div><div class="sub">按游戏汇总，文件名加原 Mod UID，附带创意工坊来源清单。同一 Mod 再次完成时更新副本；关闭后保留已有成果。</div><div id="aggregate_location" class="path"></div></section>
-<div class="grid"><section class="card"><div class="row"><h2 class="grow">本机创意工坊</h2><button id="scan" class="primary">刷新目录</button></div><div class="sub library-note">优先读取 Steam ACF 已安装清单。进入模组后再扫描翻译文件。</div><input id="search" placeholder="在当前游戏中搜索名称或 UID" aria-label="搜索 Mod"><div id="categories" class="categories" role="tablist" aria-label="按游戏分类"></div><div class="mods" id="mods"><div class="empty">先配置 Steam 库目录，然后点击「扫描 Mod」。<br>默认自动检测本机 Steam 库。</div></div><div class="status count-bar" id="count"></div></section>
-<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前自动整合已有中文、数据库和匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="row"><button id="analyze" class="scan-action">扫描此 Mod</button><button id="translate" class="ai-action">开始AI翻译</button><button id="open">打开 Mod 文件夹</button></div><button id="browse_entries" style="margin:18px 10px 0 0">浏览翻译条目</button><button id="cache_tools" style="margin-top:18px">缓存导入 / 导出</button><div class="row" style="margin-top:16px"><button disabled title="尚未启用">投稿翻译至 Steam 创意工坊 · 尚未启用</button></div><div class="sub" style="margin-top:12px">解析或翻译失败的行保留英文，其余条目继续翻译；任务结束显示报错行数与位置。Steam 更新可能覆盖回写文件，可从备份再次复制。</div></div><hr style="border:0;border-top:1px solid var(--line);margin:24px 0"><details id="settings"><summary>API 与 Steam 库设置</summary><label for="storage_mode">配置保存位置</label><div class="row"><select id="storage_mode" class="grow" style="width:auto"><option value="user">用户文件夹</option><option value="portable">程序所在文件夹</option></select><button id="switch_storage">切换保存位置</button></div><div id="config_location" class="path" style="margin-top:10px"></div><div class="sub">切换时复制当前配置和已保存的接口；同名但内容不同的旧接口会保留为另一份配置。翻译缓存和备份继续保存在数据目录。</div><label for="profile_select">已保存的 API 配置</label><div class="row"><select id="profile_select" class="grow" style="width:auto" aria-label="已保存的 API 配置"><option value="">选择已保存的配置</option></select><button id="switch_profile">使用此配置</button></div><label for="config_name">配置名称（保存同名时更新，可保存多个模型）</label><input id="config_name" placeholder="例如：日常翻译、备用接口"><label>提供商名称（可留空自动命名）</label><input id="provider" placeholder="填写你的 API 提供商名称"><label>接口格式</label><input value="OpenAI 兼容 · Chat Completions" disabled><div class="field-grid"><div><label>Base URL</label><input id="base_url" placeholder="https://api.openai.com/v1"></div><div><label>模型名称</label><input id="model" placeholder="gpt-4.1-mini"></div></div><label>API Key（留空保留已保存的密钥）</label><input id="api_key" type="password" autocomplete="new-password" placeholder="尚未设置"><div class="field-grid"><div><label>每批文本数</label><input id="batch_size" type="number" min="1" max="50"></div><div><label>并发请求数</label><input id="concurrency" type="number" min="1" max="10"></div></div><label>额外 Steam 库目录（每行一个，可填 workshop/content）</label><textarea id="libraries" rows="2" placeholder="/Volumes/Games/SteamLibrary"></textarea><div class="row" style="margin-top:12px"><button id="save">保存配置</button><span class="sub">API Key 保存到本机 JSON，不返回浏览器。</span></div></details></section></div>
-<section class="card wide entry-browser" id="entry_browser" aria-labelledby="entry_title">
-<div class="row"><h2 class="grow" id="entry_title" tabindex="-1">条目浏览库</h2><span class="status" id="entry_loading" role="status"></span><button id="entry_scan">扫描并更新条目</button><button id="entry_close">回到工作台</button></div>
-<div class="entry-toolbar"><input id="entry_query" maxlength="256" placeholder="搜索键名、英文、中文或文件路径" aria-label="搜索翻译条目"><button id="entry_refresh">刷新列表</button></div>
-<div class="entry-filters" id="entry_filters" role="group" aria-label="按条目状态筛选"></div><div id="entry_note" class="sub"></div><div id="entry_edit_result" class="notice entry-edit-result" hidden aria-live="polite"></div>
-<div class="entry-table-wrap"><table class="entry-table"><thead><tr><th scope="col">键名 / 原文件位置</th><th scope="col">英文 / 错误原行</th><th scope="col">中文 / 来源</th><th scope="col">状态</th></tr></thead><tbody id="entry_rows"></tbody></table></div>
-<div id="entry_empty" class="empty">先在上方选择游戏和 Mod，查看键名、英文、中文与状态。</div><div class="row entry-pagination"><span id="entry_page" class="sub grow"></span><button id="entry_prev">上一页</button><button id="entry_next">下一页</button></div>
-</section>
-<section class="card wide"><div class="row"><h2 class="grow">中文备份库</h2><span class="status">SQLite · 按 UID 保存历史版本</span></div><table><thead><tr><th>Mod / UID</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="history"></tbody></table><div id="nohistory" class="empty">翻译完成后，中文文件与原文备份会显示在这里。</div></section>
+<div class="grid"><section class="card"><div class="row"><h2 class="grow">本机创意工坊</h2><button id="scan" class="primary">刷新目录</button></div><div class="sub library-note">优先读取 Steam ACF 已安装清单。自动按「已扫描未完全翻译 → 已扫描完全翻译 → 未扫描」排序。</div><input id="search" placeholder="在当前游戏中搜索名称或 UID" aria-label="搜索 Mod"><div id="categories" class="categories" role="tablist" aria-label="按游戏分类"></div><div class="mods" id="mods"><div class="empty">先配置 Steam 库目录，然后点击「扫描 Mod」。<br>默认自动检测本机 Steam 库。</div></div><div class="status count-bar" id="count"></div></section>
+<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前自动整合已有中文、数据库和匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="row"><button id="analyze" class="scan-action">扫描此 Mod</button><button id="translate" class="ai-action">开始AI翻译</button><button id="open">打开 Mod 文件夹</button></div><div class="row" style="margin-top:14px"><button id="browse_entries">查看 / 修改文件条目</button><button id="import_btn">导入译文</button><button id="export_btn">导出中文 + 哈希 (.zip)</button></div><div class="row" style="margin-top:14px"><button disabled title="尚未启用">投稿翻译至 Steam 创意工坊 · 尚未启用</button></div><div class="sub" style="margin-top:12px">解析或翻译失败的行保留英文，其余条目继续翻译；任务结束显示报错行数与位置。Steam 更新可能覆盖回写文件，可从备份再次复制。</div></div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><details id="settings"><summary>API 与 Steam 库设置</summary><label for="storage_mode">配置保存位置</label><div class="row"><select id="storage_mode" class="grow" style="width:auto"><option value="user">用户文件夹</option><option value="portable">程序所在文件夹</option></select><button id="switch_storage">切换保存位置</button></div><div id="config_location" class="path" style="margin-top:10px"></div><div class="sub">切换时复制当前配置和已保存的接口；同名但内容不同的旧接口会保留为另一份配置。翻译缓存和备份继续保存在数据目录。</div><label for="profile_select">已保存的 API 配置</label><div class="row"><select id="profile_select" class="grow" style="width:auto" aria-label="已保存的 API 配置"><option value="">选择已保存的配置</option></select><button id="switch_profile">使用此配置</button></div><label for="config_name">配置名称（保存同名时更新，可保存多个模型）</label><input id="config_name" placeholder="例如：日常翻译、备用接口"><label>提供商名称（可留空自动命名）</label><input id="provider" placeholder="填写你的 API 提供商名称"><label>接口格式</label><input value="OpenAI 兼容 · Chat Completions" disabled><div class="field-grid"><div><label>Base URL</label><input id="base_url" placeholder="https://api.openai.com/v1"></div><div><label>模型名称</label><input id="model" placeholder="gpt-4.1-mini"></div></div><label>API Key（留空保留已保存的密钥）</label><input id="api_key" type="password" autocomplete="new-password" placeholder="尚未设置"><div class="field-grid"><div><label>每批文本数</label><input id="batch_size" type="number" min="1" max="50"></div><div><label>并发请求数</label><input id="concurrency" type="number" min="1" max="10"></div></div><label>额外 Steam 库目录（每行一个，可填 workshop/content）</label><textarea id="libraries" rows="2" placeholder="/Volumes/Games/SteamLibrary"></textarea><div class="row" style="margin-top:12px"><button id="save">保存配置</button><span class="sub">API Key 保存到本机 JSON，不返回浏览器。</span></div></details></section></div>
+
+<details class="card wide collapsible-panel entry-browser" id="entry_browser" aria-labelledby="entry_title">
+  <summary class="panel-summary">
+    <div class="panel-summary-main">
+      <h2 id="entry_title" tabindex="-1">条目浏览库（查看 / 修改文件）</h2>
+      <span class="sub">默认收起 · 点击展开查看键值、排查报错或直接修改原文件行</span>
+    </div>
+    <span class="status" id="entry_loading" role="status"></span>
+  </summary>
+  <div class="panel-body">
+    <div class="row" style="justify-content:flex-end"><button id="entry_scan" class="scan-action">扫描并更新条目</button><button id="entry_close">收起并回到工作台</button></div>
+    <div class="entry-toolbar"><input id="entry_query" maxlength="256" placeholder="搜索键名、英文、中文或文件路径" aria-label="搜索翻译条目"><button id="entry_refresh">刷新列表</button></div>
+    <div class="entry-filters" id="entry_filters" role="group" aria-label="按条目状态筛选"></div><div id="entry_note" class="sub"></div><div id="entry_edit_result" class="notice entry-edit-result" hidden aria-live="polite"></div>
+    <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th scope="col">键名 / 原文件位置</th><th scope="col">英文 / 错误原行</th><th scope="col">中文 / 来源</th><th scope="col">状态</th></tr></thead><tbody id="entry_rows"></tbody></table></div>
+    <div id="entry_empty" class="empty">先在上方选择游戏和 Mod，查看键名、英文、中文与状态。</div><div class="row entry-pagination"><span id="entry_page" class="sub grow"></span><button id="entry_prev">上一页</button><button id="entry_next">下一页</button></div>
+  </div>
+</details>
+
+<details class="card wide collapsible-panel" id="history_panel">
+  <summary class="panel-summary">
+    <div class="panel-summary-main">
+      <h2>中文备份库</h2>
+      <span class="sub" id="history_summary_note">SQLite · 按 UID 保存历史版本（默认收起，点击展开）</span>
+    </div>
+  </summary>
+  <div class="panel-body">
+    <table><thead><tr><th>Mod / UID</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="history"></tbody></table>
+    <div id="nohistory" class="empty">翻译完成后，中文文件与原文备份会显示在这里。</div>
+  </div>
+</details>
+
 <section class="card wide"><div class="row"><h2 class="grow">任务进度</h2><span id="status" class="status">待命</span></div><div id="logs" class="logs">准备就绪。先保存接口设置，再扫描本机 Mod。</div></section><footer><div id="app_build">条目浏览库 · 正在连接后台</div><div id="storage"></div></footer></main>
-<dialog id="cache_dialog" aria-labelledby="cache_title"><div class="row"><h2 id="cache_title" class="grow">缓存导入 / 导出</h2><button id="close_cache" aria-label="关闭缓存窗口">关闭</button></div><div class="sub">开始AI翻译会自动整合匹配缓存。这里可额外导入已有中文，或导出缓存用于备份。</div><div class="row" style="margin-top:12px"><button id="export_cache">导出哈希缓存</button></div><label>导入来源 / 提供商名称（可留空自动命名）</label><input id="import_provider" placeholder="例如：某汉化组、个人译者"><label>中文 YML、中文文件夹或缓存 JSON 路径</label><input id="import_path" placeholder="选择文件 / 文件夹，或粘贴本机路径"><div class="row" style="margin-top:10px"><button id="pick_file">选择文件</button><button id="pick_folder">选择文件夹</button><button id="import_cache" class="primary">提取并导入</button></div><div class="sub">导入缓存无法检查是否需要更新：带哈希缓存仅校验本机英文，无法检查 Steam 尚未安装的更新；无哈希中文文件无法判断原文是否更新，请确认来源版本。冲突和变量错误的译文会跳过。</div></dialog>
+
+<dialog id="import_step1_dialog" aria-labelledby="import_step1_title">
+  <div class="step-badge">STEP 1 / 2</div>
+  <div class="row"><h2 id="import_step1_title" class="grow">选择导入文件或文件夹</h2><button id="close_import_step1" aria-label="关闭导入窗口">关闭</button></div>
+  <div class="sub">请先选择本机中文 YML 文件、包含中文的文件夹、导出的 ZIP 压缩包或缓存 JSON。选择完成后将进入提示与导入者命名步骤。</div>
+  <div class="row" style="margin-top:14px">
+    <button id="pick_file" class="primary">选择文件…</button>
+    <button id="pick_folder" class="primary">选择文件夹…</button>
+    <span id="picker_status" class="sub" role="status" aria-live="polite"></span>
+  </div>
+  <label for="import_path">或直接粘贴本机文件 / 文件夹路径</label>
+  <input id="import_path" placeholder="选择文件 / 文件夹，或粘贴本机路径">
+  <div class="row" style="margin-top:16px;justify-content:flex-end">
+    <button id="import_next_step" class="primary">下一步：确认并设置导入者名称</button>
+  </div>
+</dialog>
+
+<dialog id="import_step2_dialog" aria-labelledby="import_step2_title">
+  <div class="step-badge">STEP 2 / 2</div>
+  <div class="row"><h2 id="import_step2_title" class="grow">确认导入提示与导入者名称</h2><button id="close_import_step2" aria-label="关闭导入确认">取消</button></div>
+  <div class="selected-path-box">
+    <div class="row"><span class="sub grow">已选导入路径：</span><button id="import_back_step1" style="padding:4px 8px;font-size:11px">重新选择</button></div>
+    <div id="import_selected_path" class="path" style="margin-top:4px"></div>
+  </div>
+  <div class="notice">提取所选中文文件并与当前 Mod 英文建立缓存对应关系。<br>导入缓存无法检查是否需要更新：带哈希缓存仅校验本机英文，无法检查 Steam 尚未安装的更新；无哈希中文文件无法判断原文是否更新，请确认来源版本。已有哈希不同的旧译文、冲突译文和格式错误会自动跳过。</div>
+  <label for="import_provider">导入者名称（可留空自动命名）</label>
+  <input id="import_provider" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
+  <div class="sub" style="margin-top:6px">提示：可留空自动命名，系统会按日期与序号自动生成来源名称（如「翻译-2026-10-17-1」）。</div>
+  <div class="row" style="margin-top:18px;justify-content:flex-end">
+    <button id="cancel_import_step2">返回上一步</button>
+    <button id="import_cache" class="primary">确认并导入</button>
+  </div>
+</dialog>
+
 <dialog id="confirmation" aria-labelledby="confirmation_title"><h2 id="confirmation_title">确认操作</h2><p id="confirmation_text" style="white-space:pre-line;line-height:1.8"></p><div class="row"><button id="cancel_action">取消</button><button class="primary" id="confirm_action">确认执行</button></div></dialog>
 <script src="/vendor/gsap.min.js"></script><script src="/vendor/ScrollTrigger.min.js"></script><script>
-const token='__APP_TOKEN__';let state=null,selected=null,initialized=false,lastJob=null,steamWindow=null,activeGame=null;const games={st:'群星',hoi4:'钢铁雄心4',eu4:'欧陆风云4',ck3:'十字军之王3',vic3:'维多利亚3'};const $=id=>document.getElementById(id);
+const token='__APP_TOKEN__';let state=null,selected=null,initialized=false,lastJob=null,steamWindow=null,activeGame=null,pickingImport=false;const games={st:'群星',hoi4:'钢铁雄心4',eu4:'欧陆风云4',ck3:'十字军之王3',vic3:'维多利亚3'};const $=id=>document.getElementById(id);
+
+function applyTheme(theme){
+  const valid=['light','dark','hc-light','hc-dark'];
+  const chosen=valid.includes(theme)?theme:'light';
+  document.documentElement.setAttribute('data-theme',chosen);
+  try{localStorage.setItem('workshop_theme',chosen);}catch(e){}
+  document.querySelectorAll('[data-theme-opt]').forEach(btn=>{
+    btn.setAttribute('aria-pressed',String(btn.dataset.themeOpt===chosen));
+  });
+}
+(()=>{
+  let initial='light';
+  try{
+    const saved=localStorage.getItem('workshop_theme');
+    if(saved)initial=saved;
+    else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)initial='dark';
+  }catch(e){}
+  applyTheme(initial);
+  document.querySelectorAll('[data-theme-opt]').forEach(btn=>{
+    btn.onclick=()=>applyTheme(btn.dataset.themeOpt);
+  });
+})();
+
 function escapeText(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function ask(message,label="确认执行"){return new Promise(resolve=>{const dialog=$('confirmation');$('confirmation_text').textContent=message;$('confirm_action').textContent=label;$('confirm_action').className=label==='开始AI翻译'?'ai-action':'primary';$('cancel_action').onclick=()=>{dialog.close();resolve(false);};$('confirm_action').onclick=()=>{dialog.close();resolve(true);};dialog.oncancel=()=>resolve(false);dialog.showModal();});}
 function toast(message){$('toast').textContent=message;$('toast').style.display='block';}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body===undefined?'GET':'POST',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'请求失败');return data;}
 function statsText(mod){const c=mod.counts;if(!c)return '未扫描';if(c.error)return '扫描失败：'+c.error;return `${mod.scan_state==='待复查'?'待复查 · 上次结果：':''}已翻译 ${c.deployed??c.translated} · 已缓存 ${c.cached||0} · 未翻译 ${c.untranslated-(c.needs_update||0)} · 需更新 ${c.needs_update||0}${c.parse_errors?" · 格式报错 "+c.parse_errors+" 行":""}`;}
 
+function modSortGroup(mod){
+  const c=mod.counts;
+  if(!c||c.error)return 2; // 2: 未扫描
+  const incomplete=(c.untranslated||0)>0||(c.needs_update||0)>0||(c.cached||0)>0||(c.parse_errors||0)>0||(c.total>0&&(c.deployed??c.translated)<c.total);
+  return incomplete?0:1; // 0: 已扫描未完全翻译, 1: 已扫描完全翻译
+}
+function modStatusBadge(mod){
+  const group=modSortGroup(mod);
+  if(group===0)return '<span class="badge warn">待完成翻译</span>';
+  if(group===1)return '<span class="badge ok">已完全翻译</span>';
+  return '<span class="badge">未扫描</span>';
+}
+
 function renderCategories(){ $('categories').innerHTML=Object.entries(games).map(([game,title])=>`<button class="category" role="tab" aria-selected="${activeGame===game}" data-game="${game}">${title}<span>${state.mods.filter(m=>m.game===game).length}</span></button>`).join('');document.querySelectorAll('[data-game]').forEach(button=>button.onclick=()=>{activeGame=button.dataset.game;selected=null;renderCategories();renderMods();renderSelection();});}
-function renderMods(){renderCategories();const query=$('search').value.toLowerCase();const mods=state.mods.filter(m=>m.game===activeGame&&(m.title+' '+m.uid).toLowerCase().includes(query));$('mods').innerHTML=mods.map(m=>`<button class="mod ${selected===m.id?'selected':''}" data-id="${escapeText(m.id)}" aria-pressed="${selected===m.id}"><strong>${escapeText(m.title)}</strong><div class="row sub"><span>UID ${escapeText(m.uid)}</span><span class="badge">${escapeText(m.name_source)}</span>${m.translated?'<span class="badge">已有备份</span>':''}</div><div class="sub">${escapeText(statsText(m))}</div></button>`).join('')||`<div class="empty">${!activeGame?'选择上方游戏分类，查看该游戏的本机模组。':query?'当前游戏中没有匹配的模组。':'该游戏暂无已扫描模组。可点击「扫描更新」。'}</div>`;$('count').textContent=`本地清单 ${state.mods.length} 个 · ${activeGame?games[activeGame]+' '+mods.length+' 个':'请选择游戏'}`;document.querySelectorAll('[data-id]').forEach(e=>e.onclick=()=>{selected=e.dataset.id;renderMods();renderSelection();});revealMods();}
+function renderMods(){
+  renderCategories();
+  const query=$('search').value.toLowerCase();
+  const mods=state.mods
+    .filter(m=>m.game===activeGame&&(m.title+' '+m.uid).toLowerCase().includes(query))
+    .slice()
+    .sort((a,b)=>{
+      const ga=modSortGroup(a),gb=modSortGroup(b);
+      if(ga!==gb)return ga-gb;
+      return String(a.title||'').localeCompare(String(b.title||''),'zh-CN')||String(a.uid).localeCompare(String(b.uid));
+    });
+  $('mods').innerHTML=mods.map(m=>`<button class="mod ${selected===m.id?'selected':''}" data-id="${escapeText(m.id)}" aria-pressed="${selected===m.id}"><strong>${escapeText(m.title)}</strong><div class="row sub"><span>UID ${escapeText(m.uid)}</span>${modStatusBadge(m)}<span class="badge info">${escapeText(m.name_source)}</span>${m.translated?'<span class="badge purple">已有备份</span>':''}</div><div class="sub">${escapeText(statsText(m))}</div></button>`).join('')||`<div class="empty">${!activeGame?'选择上方游戏分类，查看该游戏的本机模组。':query?'当前游戏中没有匹配的模组。':'该游戏暂无已扫描模组。可点击「扫描更新」。'}</div>`;
+  $('count').textContent=`本地清单 ${state.mods.length} 个 · ${activeGame?games[activeGame]+' '+mods.length+' 个':'请选择游戏'}`;
+  document.querySelectorAll('[data-id]').forEach(e=>e.onclick=()=>{selected=e.dataset.id;renderMods();renderSelection();});
+  revealMods();
+}
 function revealMods(){if(document.querySelector('.mod')&&window.gsap&&!matchMedia('(prefers-reduced-motion: reduce)').matches)gsap.fromTo('.mod',{opacity:0,y:5},{opacity:1,y:0,duration:.3,stagger:.025,overwrite:true});}
 
 function openSteam(mod){if(steamWindow&&!steamWindow.closed){try{steamWindow.location.href=mod.url;steamWindow.focus();return;}catch(e){}}steamWindow=window.open(mod.url,'WorkshopSteamPreview');if(!steamWindow)toast('浏览器阻止了 Steam 窗口，请允许本机页面打开弹出窗口。');}
 function renderSelection(){if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent='在左侧选择一个 Mod，查看路径并开始翻译。';return;}$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>总条目</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>已翻译</span></div><div><b>${mod.counts.cached||0}</b><span>已缓存</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>未翻译</span></div><div><b>${mod.counts.needs_update||0}</b><span>需更新</span></div><div><b>${mod.counts.parse_errors||0}</b><span>格式错误</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||'暂无有效译文')}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);}
-function renderHistory(){const entries=state.history;$('nohistory').hidden=!!entries.length;$('history').innerHTML=entries.map(v=>`<tr><td><strong>${escapeText(v.title)}</strong><br><span class="sub">${escapeText(v.uid)} · 版本 ${v.version_id}<br>来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${state.job.running||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button></td></tr>`).join('');document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
-async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?'已保存；留空保留':'尚未设置';initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">选择已保存的配置</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · 未保存密钥'}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';$('translation_notice').textContent='演示模式自动整合匹配缓存，只操作模拟 Mod，使用固定示例译文，不访问 Steam 或付费模型。完成后仍会实际验证本地备份和文件复制流程。';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/aggregate_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||previous.job.running!==state.job.running){renderHistory();}for(const id of ['scan','translate','save','switch_profile','switch_storage','storage_mode','open','analyze','import_cache','export_cache','pick_file','pick_folder','cache_tools','aggregate_export','open_aggregate'])$(id).disabled=state.job.running;$('status').textContent=state.job.running?'正在执行 · '+state.job.kind:'待命';if(state.job.messages.length)$('logs').textContent=state.job.messages.join('\n');const job=JSON.stringify(state.job);if(!state.job.running&&state.job.error&&job!==lastJob)toast(state.job.error);if(!state.job.running&&job!==lastJob&&state.job.result?.aggregate?.error)toast('原 Mod 已回写，聚合副本生成失败：'+state.job.result.aggregate.error);lastJob=job;if(window.syncEntryBrowser)window.syncEntryBrowser();}catch(e){toast('连接程序失败：'+e.message);}}
+function renderHistory(){const entries=state.history;$('nohistory').hidden=!!entries.length;$('history_summary_note').textContent=`SQLite · 共 ${entries.length} 条历史版本（默认收起，点击展开）`;$('history').innerHTML=entries.map(v=>`<tr><td><strong>${escapeText(v.title)}</strong><br><span class="sub">${escapeText(v.uid)} · 版本 ${v.version_id}<br>来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${state.job.running||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button></td></tr>`).join('');document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
+async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?'已保存；留空保留':'尚未设置';initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">选择已保存的配置</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · 未保存密钥'}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';$('translation_notice').textContent='演示模式自动整合匹配缓存，只操作模拟 Mod，使用固定示例译文，不访问 Steam 或付费模型。完成后仍会实际验证本地备份和文件复制流程。';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/aggregate_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||previous.job.running!==state.job.running){renderHistory();}for(const id of ['scan','translate','save','switch_profile','switch_storage','storage_mode','open','analyze','import_btn','export_btn','import_cache','pick_file','pick_folder','import_next_step','aggregate_export','open_aggregate'])$(id).disabled=state.job.running||(pickingImport&&['pick_file','pick_folder','import_next_step','import_cache'].includes(id));$('status').textContent=state.job.running?'正在执行 · '+state.job.kind:'待命';if(state.job.messages.length)$('logs').textContent=state.job.messages.join('\n');const job=JSON.stringify(state.job);if(!state.job.running&&state.job.error&&job!==lastJob)toast(state.job.error);if(!state.job.running&&job!==lastJob&&state.job.result?.aggregate?.error)toast('原 Mod 已回写，聚合副本生成失败：'+state.job.result.aggregate.error);lastJob=job;if(window.syncEntryBrowser)window.syncEntryBrowser();}catch(e){toast('连接程序失败：'+e.message);}}
 $('save').onclick=async()=>{try{const c={api_format:'openai',provider:$('provider').value.trim(),config_name:$('config_name').value.trim(),base_url:$('base_url').value.trim(),model:$('model').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value),steam_libraries:$('libraries').value.split('\n').map(v=>v.trim()).filter(Boolean)};if($('api_key').value.trim())c.api_key=$('api_key').value.trim();await api('config',c);$('api_key').value='';toast('配置已保存到本机 JSON');initialized=false;await refresh();}catch(e){toast(e.message);}};
 $('switch_storage').onclick=async()=>{try{await api('config-storage',{mode:$('storage_mode').value});initialized=false;await refresh();toast('配置保存位置已切换，当前配置与接口列表已复制');}catch(e){toast(e.message);}};
 $('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!name){toast('请选择已保存的配置');return;}try{await api('profile',{name});$('api_key').value='';initialized=false;await refresh();toast('已切换 API 配置：'+name);}catch(e){toast(e.message);}};
 $('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?'聚合汉化已开启：所有 Mod 回写后自动汇总。':'聚合汉化已关闭，已有汇总文件保留。');}catch(e){$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
 $('open_aggregate').onclick=async()=>{try{await api('open-aggregate',{});}catch(e){toast(e.message);}};
 $('scan').onclick=async()=>{try{await api('scan',{});await refresh();}catch(e){toast(e.message);}};
-$('translate').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(state.demo?`演示翻译「${mod.title}」？\n自动整合匹配缓存，使用固定示例译文，不调用任何外部接口。`:`开始AI翻译「${mod.title}」？\n自动整合已有中文和匹配缓存，只翻译缺失或原文变化的条目。\n英文文本会发往 ${state.config.base_url}，可能产生费用。\n完成后备份并回写（报错行保留英文）：${mod.path}`,'开始AI翻译'))return;try{await api('translate',{id:selected});await refresh();}catch(e){toast(e.message);}};
+$('translate').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(state.demo?`演示翻译「${mod.title}」？\n自动整合匹配缓存，使用固定示例译文，不访问任何外部接口。`:`开始AI翻译「${mod.title}」？\n自动整合已有中文和匹配缓存，只翻译缺失或原文变化的条目。\n英文文本会发往 ${state.config.base_url}，可能产生费用。\n完成后备份并回写（报错行保留英文）：${mod.path}`,'开始AI翻译'))return;try{await api('translate',{id:selected});await refresh();}catch(e){toast(e.message);}};
 $('analyze').onclick=async()=>{try{await api('analyze',{id:selected});await refresh();}catch(e){toast(e.message);}};
-$('cache_tools').onclick=()=>{$('cache_dialog').showModal();if(window.gsap&&!matchMedia('(prefers-reduced-motion: reduce)').matches)gsap.fromTo('#cache_dialog',{y:10},{y:0,duration:.2});};$('close_cache').onclick=()=>$('cache_dialog').close();
-$('import_cache').onclick=async()=>{if(!selected)return;const path=$('import_path').value.trim();if(!path){toast('请选择文件、文件夹或填写路径');return;}$('cache_dialog').close();if(!await ask('提取所选中文文件并与当前 Mod 英文建立缓存对应关系？\n导入缓存无法检查是否需要更新：带哈希缓存仅校验本机英文，无法检查 Steam 尚未安装的更新；无哈希中文文件无法判断原文是否更新，请确认来源版本。\n已有哈希不同的旧译文、冲突译文和格式错误会跳过。')){$('cache_dialog').showModal();return;}try{await api('import',{id:selected,path,provider:$('import_provider').value.trim()});await refresh();toast('导入完成。'+'导入缓存无法检查是否需要更新：带哈希缓存仅校验本机英文，无法检查 Steam 尚未安装的更新；无哈希中文文件无法判断原文是否更新，请确认来源版本。');}catch(e){toast(e.message);}};
-async function pick(kind){try{const result=await api('pick',{kind});if(result.path)$('import_path').value=result.path;}catch(e){toast(e.message);}}
-$('pick_file').onclick=()=>pick('file');$('pick_folder').onclick=()=>pick('folder');
-$('export_cache').onclick=async()=>{try{const cache=await api('export',{id:selected});const url=URL.createObjectURL(new Blob([JSON.stringify(cache,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=selected.replace(':','-')+'.cache.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){toast(e.message);}};
 
-$('open').onclick=async()=>{try{await api('open',{id:selected});}catch(e){toast(e.message);}};$('search').oninput=()=>state&&renderMods();if(window.gsap&&window.ScrollTrigger&&!matchMedia('(prefers-reduced-motion: reduce)').matches){gsap.registerPlugin(ScrollTrigger);gsap.fromTo('h1,.workflow',{y:8},{opacity:1,y:0,duration:.6,stagger:.12});gsap.utils.toArray('.card.wide').forEach(el=>gsap.fromTo(el,{y:12},{opacity:1,y:0,duration:.6,scrollTrigger:{trigger:el,start:'top 95%',toggleActions:'play none none none'}}));}refresh();setInterval(refresh,1800);
+function openImportStep1(){
+  if(!selected)return;
+  $('picker_status').textContent='';
+  $('import_step1_dialog').showModal();
+}
+function openImportStep2(path){
+  const trimmed=(path??$('import_path').value).trim();
+  if(!trimmed){toast('请先选择文件或文件夹，或输入本机路径');return;}
+  $('import_path').value=trimmed;
+  $('import_selected_path').textContent=trimmed;
+  if($('import_step1_dialog').open)$('import_step1_dialog').close();
+  $('import_step2_dialog').showModal();
+  $('import_provider').focus();
+}
+$('import_btn').onclick=openImportStep1;
+$('close_import_step1').onclick=()=>$('import_step1_dialog').close();
+$('import_next_step').onclick=()=>openImportStep2();
+$('close_import_step2').onclick=()=>$('import_step2_dialog').close();
+$('cancel_import_step2').onclick=()=>{$('import_step2_dialog').close();$('import_step1_dialog').showModal();};
+$('import_back_step1').onclick=()=>{$('import_step2_dialog').close();$('import_step1_dialog').showModal();};
+
+async function pick(kind){
+  if(pickingImport)return;
+  pickingImport=true;
+  for(const id of ['pick_file','pick_folder','import_next_step','import_cache'])$(id).disabled=true;
+  $('picker_status').textContent='正在打开系统选择器…';
+  try{
+    const result=await api('pick',{kind});
+    if(result.path){
+      $('import_path').value=result.path;
+      $('picker_status').textContent='已选择，正在进入确认与署名步骤…';
+      openImportStep2(result.path);
+    }else{
+      $('picker_status').textContent='已取消选择。';
+    }
+  }catch(e){
+    $('picker_status').textContent=e.message;
+  }finally{
+    pickingImport=false;
+    for(const id of ['pick_file','pick_folder','import_next_step','import_cache'])$(id).disabled=!!state?.job.running;
+  }
+}
+$('pick_file').onclick=()=>pick('file');
+$('pick_folder').onclick=()=>pick('folder');
+
+$('import_cache').onclick=async()=>{
+  if(!selected)return;
+  const path=$('import_path').value.trim();
+  if(!path){toast('请先选择文件或文件夹');return;}
+  const provider=$('import_provider').value.trim();
+  $('import_step2_dialog').close();
+  try{
+    await api('import',{id:selected,path,provider});
+    await refresh();
+    toast(`导入任务已启动（来源：${provider||'自动命名'}）。带哈希缓存仅校验本机英文；无哈希中文文件请确认来源版本。`);
+  }catch(e){toast(e.message);}
+};
+
+$('export_btn').onclick=async()=>{
+  if(!selected)return;
+  try{
+    const r=await fetch('/api/export',{
+      method:'POST',
+      headers:{'X-App-Token':token,'Content-Type':'application/json'},
+      body:JSON.stringify({id:selected,format:'zip'})
+    });
+    if(!r.ok){
+      const err=await r.json().catch(()=>({error:'导出失败'}));
+      throw Error(err.error||'导出失败');
+    }
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download=selected.replace(':','-')+'-chinese-hash.zip';
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast('已导出 ZIP 压缩包（含中文 YML 目录树与 .cache.json 哈希文件）。');
+  }catch(e){toast(e.message);}
+};
+
+$('open').onclick=async()=>{try{await api('open',{id:selected});}catch(e){toast(e.message);}};
+$('search').oninput=()=>state&&renderMods();
+if(window.gsap&&window.ScrollTrigger&&!matchMedia('(prefers-reduced-motion: reduce)').matches){gsap.registerPlugin(ScrollTrigger);gsap.fromTo('h1,.workflow',{y:8},{opacity:1,y:0,duration:.6,stagger:.12});}
+refresh();setInterval(refresh,1800);
 </script><script src="/entry_browser_ui.js" onerror="document.getElementById('entry_note').textContent='条目浏览模块未加载。请关闭旧程序，重新运行当前文件夹的启动翻译程序.command。'"></script></html>

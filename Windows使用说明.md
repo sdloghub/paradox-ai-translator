@@ -78,11 +78,10 @@ GitHub 构建只使用空配置模板，不上传本机密钥、Mod、数据库�
 
 rules.json 的提示词统一保护变量、图标、颜色格式、转义符和批次分隔符；各游戏保留独立风格，允许必要的括号与专名。启动时延迟加载模型 SDK，未改变的完成记录不重复导入，缓存目录清单直接读取。`--startup-check` 输出内部启动耗时且不调用外部接口。Windows 构建额外比较同代码单文件与文件夹模式，每种测量三次，结果保存在 startup-benchmark.json；该测量不包含浏览器渲染，也不代表所有用户电脑的耗时。
 
-### ACF 清单与交接
+### ACF 清单
 
 每个游戏库的每个游戏 ACF 每次刷新只读取一次，保留 manifest 为字符串。WorkshopItemDetails 单独出现的物品不视为已安装；latest_manifest 不同或 latest_timeupdated 较新时提示 Steam 有待安装更新。完整的空安装清单会清空当前列表，历史备份仍保留。清单缺失、无效或写入不完整时提示并回退到目录检查。仅支持五个 Paradox 游戏；ACF兼容范围以用户样例与测试为准，未找到官方公开字段规范。
 
-阅读「交接说明.md」了解开发上下文。运行 python packaging/build_handoff.py 会将必要源码、测试、交接说明和 Windows 发布 ZIP 打包为 dist/WorkshopTranslator-Codex-Handoff.zip，不收录 .git、密钥、Mod、数据库或完整聊天原始记录。
 
 
 ## 报错保留英文与缓存状态（2026-10-10）

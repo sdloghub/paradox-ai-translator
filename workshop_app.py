@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.16-aggregate.1'
+APP_VERSION = '2026.10.17-chinese-editor.1'
 
 
 def program_directory():
@@ -667,6 +667,108 @@ class WorkshopService:
         return {'file': row['source_file'], 'line': number, 'parse_error': bool(issue),
                 'reason': issue['reason'] if issue else '', 'backup_path': str(backup) if backup else '', 'counts': counts}
 
+    def edit_translation(self, identifier, entry_id, replacement, expected):
+        import paradox
+        import request
+        from translation_cache import canonical_key, digest, entries
+        if not isinstance(replacement, str) or not replacement.strip() or len(replacement) > 16000:
+            raise ValueError('中文译文不能为空，且最多 16000 个字符')
+        if any(char in replacement for char in '\r\n\x00\x85\u2028\u2029\ufeff'):
+            raise ValueError(r'译文需保持单行，换行请使用字面量 \n')
+        item = self.get_mod(identifier)
+        row = self.cache.browser.get(identifier, entry_id)
+        if row['auto_status'] not in ('translated', 'cached') or row['historical']:
+            raise ValueError('仅可修改当前英文匹配的已缓存或已翻译条目，请先扫描')
+        if expected != row['chinese']:
+            raise ValueError('中文已变化，请刷新后重新编辑')
+        sources = self.original_sources(item)
+        matches = [entry for entry in entries(sources, item['game'], strict=False)
+                   if entry['source_file'] == row['source_file'] and entry['line'] == row['line']
+                   and canonical_key(entry['key']) == row['entry_key'] and entry['text'] == row['english']
+                   and entry['original_line'] == row['original_line']]
+        if len(matches) != 1:
+            raise ValueError('英文原文件已变化，请重新扫描后编辑')
+        entry = matches[0]
+        # Cache the same escaped representation that the YML parser will read.
+        replacement = re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', replacement)
+        if not request.valid_translation(entry['text'], replacement):
+            raise ValueError('变量、图标、颜色或转义符不匹配，请保留英文中的格式标记')
+        if replacement == expected:
+            return {'saved':False, 'deployed':row['auto_status'] == 'translated'}
+        key = (identifier, entry['source_file'], entry['key'], digest(entry['text']))
+        with self.connect() as db:
+            previous = db.execute('SELECT chinese,origin FROM translation_entries WHERE mod_id=? AND source_file=? AND entry_key=? AND source_hash=?', key).fetchone()
+        if previous is None or previous[0] != expected:
+            raise ValueError('缓存译文已变化，请重新扫描后编辑')
+        translated = {}
+        disk_before = {}
+        root = Path(item['path']).resolve()
+        for name in sources:
+            target = target_path(name, item['game'])
+            path = root / target
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                raise ValueError('中文文件包含符号链接或超出 Mod 目录')
+            if path.is_file():
+                translated[target] = path.read_bytes()
+                disk_before[path] = translated[target]
+        target = target_path(entry['source_file'], item['game'])
+        data = translated.get(target)
+        local = entries({entry['source_file']:data}, item['game'], strict=False) if data else []
+        same_key = [e for e in local if canonical_key(e['key']) == row['entry_key']]
+        deployed = len(same_key) == 1 and same_key[0]['text'] == expected
+        if row['auto_status'] == 'translated' and not deployed:
+            raise ValueError('本机中文文件已变化或含重复键，请重新扫描后编辑')
+        if deployed:
+            text = replacement
+            if item['game'] == 'eu4':
+                text = paradox.special_escape(text, True, True)
+            text = re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', text)
+            lines = data.decode('utf-8-sig').splitlines(keepends=True)
+            index = same_key[0]['line'] - 1
+            match = paradox.parse_line(lines[index])
+            lines[index] = match['prefix'] + '"' + text + '"' + match['suffix'] + (match['newline'] or '')
+            translated[target] = (b'\xef\xbb\xbf' if data.startswith(b'\xef\xbb\xbf') else b'') + ''.join(lines).encode('utf-8')
+        origin = previous[1] if '手动修订' in previous[1] else previous[1] + ' · 手动修订'
+        for path, content in disk_before.items():
+            if path.read_bytes() != content:
+                raise ValueError('保存前中文文件发生变化，请重新扫描')
+        version = None
+        with self.connect() as db:
+            current = db.execute('SELECT chinese FROM translation_entries WHERE mod_id=? AND source_file=? AND entry_key=? AND source_hash=?', key).fetchone()
+            if current is None or current[0] != expected:
+                raise ValueError('缓存译文已变化，请重新扫描')
+            db.execute('''CREATE TABLE IF NOT EXISTS translation_edits (
+                id INTEGER PRIMARY KEY, mod_id TEXT NOT NULL, source_file TEXT NOT NULL,
+                entry_key TEXT NOT NULL, source_hash TEXT NOT NULL, old_chinese TEXT NOT NULL,
+                new_chinese TEXT NOT NULL, old_origin TEXT NOT NULL, created_at TEXT NOT NULL)''')
+            edit_id = db.execute('INSERT INTO translation_edits(mod_id,source_file,entry_key,source_hash,old_chinese,new_chinese,old_origin,created_at) VALUES (?,?,?,?,?,?,?,?)',
+                                (*key, expected, replacement, previous[1], now())).lastrowid
+            self.cache.put(db, identifier, entry, replacement, origin)
+            if deployed:
+                source_hash = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(content).digest() for name, content in sorted(sources.items()))).hexdigest()
+                version = db.execute('INSERT INTO versions(mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES (?,?,?,?,?,?,?,?,?)',
+                                     (identifier, now(), item['title'], source_hash, '手动修订', archive(sources), archive(translated), '手动修订', '[]')).lastrowid
+        aggregate = {'enabled':False}
+        try:
+            if deployed:
+                aggregate = self.restore(version, identifier)['aggregate']
+        except Exception:
+            with self.connect() as db:
+                if not db.execute('SELECT 1 FROM deployments WHERE version_id=?', (version,)).fetchone():
+                    self.cache.put(db, identifier, entry, previous[0], previous[1])
+                    db.execute('DELETE FROM versions WHERE id=?', (version,))
+            raise
+        self.cache.sync_workspace(item, sources)
+        item['counts'] = self.cache.stats(item, sources)
+        item['scan_state'] = '已扫描'
+        self.persist_item(item)
+        self.save_completed()
+        if version is not None:
+            with self.connect() as db:
+                db.execute('UPDATE versions SET origins=? WHERE id=?', (json.dumps(item['counts']['origins'], ensure_ascii=False), version))
+        self.log(f"中文修订已保存：{entry['source_file']}，第 {entry['line']} 行；{'已备份并回写原 Mod' if deployed else '已更新缓存，尚未回写 Mod'}；修订记录 {edit_id}")
+        return {'saved':True, 'deployed':deployed, 'edit_id':edit_id, 'version_id':version, 'aggregate':aggregate}
+
     def analyze(self, identifier):
         from translation_cache import candidates
         item = self.get_mod(identifier)
@@ -701,6 +803,12 @@ class WorkshopService:
         self.persist_item(item)
         self.save_completed()
         return {**result, **item['counts'], 'provider': label, 'warning': warning}
+
+    def export_package(self, identifier):
+        item = self.get_mod(identifier)
+        data = self.cache.export_package(item)
+        self.log(f"{item['title']}：已导出中文 YML 目录树与哈希缓存压缩包")
+        return data
 
     def translate(self, identifier, translator=None, deploy=True, provider=None):
         item = self.get_mod(identifier)
@@ -1024,6 +1132,13 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('请等待任务结束后标注条目')
                     service.get_mod(body['id'])
                     return self.send(200, service.cache.browser.mark(body['id'], body['entry_id'], body['status']))
+            if self.path == '/api/translation-edit':
+                identifier, entry_id = body['id'], body['entry_id']
+                replacement, expected = body['text'], body['expected']
+                service.get_mod(identifier)
+                service.cache.browser.get(identifier, entry_id)
+                service.start('edit-translation', lambda: service.edit_translation(identifier, entry_id, replacement, expected))
+                return self.send(202, {'ok':True})
             if self.path == '/api/entry-edit':
                 identifier, entry_id, replacement = body['id'], body['entry_id'], body['text']
                 service.get_mod(identifier)
@@ -1069,7 +1184,11 @@ class Handler(BaseHTTPRequestHandler):
                 service.start('import', lambda: service.import_cache(identifier, chosen, provider))
             elif self.path == '/api/export':
                 item = service.get_mod(body['id'])
+                if body.get('format') == 'zip':
+                    return self.send(200, service.export_package(body['id']), 'application/zip')
                 return self.send(200, service.cache.export(item))
+            elif self.path == '/api/export-package':
+                return self.send(200, service.export_package(body['id']), 'application/zip')
             elif self.path == '/api/submit':
                 return self.send(501, {'error': 'Steam 创意工坊投稿接口尚未启用'})
             elif self.path == '/api/pick':
@@ -1090,19 +1209,53 @@ class Handler(BaseHTTPRequestHandler):
             self.send(500, {'error': type(error).__name__})
 
 
+# Run AppKit on osascript's main thread rather than loading Tk in another Python.
+# The accessory process owns its panel and requires no Finder automation permission.
+MAC_IMPORT_PICKER = r'''
+ObjC.import('AppKit');
+function run(argv) {
+    const app = $.NSApplication.sharedApplication;
+    app.setActivationPolicy($.NSApplicationActivationPolicyAccessory);
+    const panel = $.NSOpenPanel.openPanel;
+    const folder = argv[0] === 'folder';
+    panel.canChooseFiles = !folder;
+    panel.canChooseDirectories = folder;
+    panel.allowsMultipleSelection = false;
+    panel.resolvesAliases = true;
+    panel.title = folder ? '选择中文文件夹或缓存目录' : '选择中文 YML 或缓存 JSON';
+    panel.message = folder ? '选择要提取中文翻译的文件夹' : '选择本机中文 YML 或哈希缓存 JSON 文件';
+    panel.prompt = '选择';
+    app.activateIgnoringOtherApps(true);
+    panel.center;
+    if (panel.runModal !== $.NSModalResponseOK) return '';
+    return ObjC.unwrap(panel.URL.path);
+}
+'''
+
+
 def pick_import_path(kind):
     import subprocess
     if kind not in ('file', 'folder'):
         raise ValueError('选择类型错误')
-    command = [sys.executable, '--choose-import', kind] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT / 'workshop_app.py'), '--choose-import', kind]
-    result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', timeout=180,
-                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0)
+    if sys.platform == 'darwin':
+        command = ['/usr/bin/osascript', '-l', 'JavaScript', '-e', MAC_IMPORT_PICKER, kind]
+    else:
+        command = [sys.executable, '--choose-import', kind] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT / 'workshop_app.py'), '--choose-import', kind]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', timeout=180,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError('系统选择框未能完成，请重试或直接粘贴本机路径导入') from error
     if result.returncode:
         raise ValueError('无法打开系统选择框，请使用路径输入导入')
-    return result.stdout.strip()
+    # osascript appends one newline; preserve spaces in the actual file name.
+    return result.stdout.removesuffix('\n') if sys.platform == 'darwin' else result.stdout.strip()
 
 
 def choose_import(kind):
+    if sys.platform == 'darwin':
+        print(pick_import_path(kind), flush=True)
+        return
     import tkinter as tk
     from tkinter import filedialog
     window = tk.Tk()

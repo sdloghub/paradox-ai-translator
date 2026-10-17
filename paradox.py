@@ -262,7 +262,10 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
         cached = cache.get(key)
         valid = isinstance(cached, dict) and cached.get('source_hash') == digest and isinstance(cached.get('text'), str) and request.valid_translation(text, cached['text'])
         blank = not text.strip()
-        tran[key] = Paradox_data(key, text if blank else cached['text'] if valid else text, int(blank or valid))
+        token_only = not blank and request.is_token_only(text)
+        if token_only and not valid:
+            cache[key] = {'source_hash': digest, 'text': text}
+        tran[key] = Paradox_data(key, text if (blank or token_only) else cached['text'] if valid else text, int(blank or token_only or valid))
     for key, item in tran.items():
         if not item.vis:
             pending.append(key)
