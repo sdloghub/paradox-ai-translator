@@ -1,0 +1,61 @@
+name: Build release distributions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+          - os: macos-15
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r packaging/requirements-build.txt pillow
+      - name: Run offline tests
+        run: python -m unittest discover -s tests -v
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: python -m PyInstaller --clean --noconfirm packaging/WorkshopTranslator.spec
+      - name: Verify Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & .\dist\WorkshopTranslator\WorkshopTranslator.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged self-test failed.' }
+      - name: Package Windows with blank settings
+        if: runner.os == 'Windows'
+        run: python packaging/build_release.py --data-dir build/empty-release-data
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        run: python packaging/build_macos.py
+      - name: Verify macOS executable
+        if: runner.os == 'macOS'
+        run: |
+          dist/WorkshopTranslator.app/Contents/MacOS/WorkshopTranslator --self-test
+          codesign --verify --deep --strict dist/WorkshopTranslator.app
+          file dist/WorkshopTranslator.app/Contents/MacOS/WorkshopTranslator
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            dist/WorkshopTranslator-Windows.zip
+            dist/WorkshopTranslator-macOS-*.zip
+          if-no-files-found: error
+          retention-days: 14

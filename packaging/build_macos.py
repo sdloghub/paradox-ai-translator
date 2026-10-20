@@ -3,6 +3,7 @@ import hashlib
 import argparse
 from datetime import datetime
 import json
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ def main():
     parser.add_argument('--update', action='store_true', help='只打包应用与说明，不包含用户配置')
     args = parser.parse_args()
     if sys.platform != 'darwin':
-        raise SystemExit('请在 Apple Silicon Mac 上运行此脚本')
+        raise SystemExit('请在 Mac 上运行此脚本')
     from PIL import Image
     sys.path.insert(0, str(ROOT))
     from packaging_build_helpers import release_settings
@@ -29,7 +30,11 @@ def main():
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm',
                     '--workpath', str(ROOT / 'build/macos'),
                     str(ROOT / 'packaging/WorkshopTranslator-macOS.spec')], cwd=ROOT, check=True)
-    destination = ROOT / 'dist/WorkshopTranslator-macOS-arm64'
+    architecture = platform.machine()
+    if architecture not in ('arm64', 'x86_64'):
+        raise SystemExit('不支持的 Mac 架构：' + architecture)
+    package_name = 'WorkshopTranslator-macOS-' + architecture
+    destination = ROOT / 'dist' / package_name
     destination.mkdir(parents=True, exist_ok=True)
     app = destination / 'WorkshopTranslator.app'
     if app.exists():
@@ -41,14 +46,14 @@ def main():
         target = destination / name
         if not target.exists():
             target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
-    name = ('WorkshopTranslator-macOS-arm64-Update-' + datetime.now().strftime('%Y%m%d')
-            if args.update else 'WorkshopTranslator-macOS-arm64')
+    name = (package_name + '-Update-' + datetime.now().strftime('%Y%m%d')
+            if args.update else package_name)
     archive = ROOT / 'dist' / (name + '.zip')
     archive.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix='mac-release-') as temporary:
         payload = destination
         if args.update:
-            payload = Path(temporary) / 'WorkshopTranslator-macOS-arm64'
+            payload = Path(temporary) / package_name
             payload.mkdir()
             subprocess.run(['/usr/bin/ditto', str(app), str(payload / app.name)], check=True)
             shutil.copy2(ROOT / 'Mac使用说明.md', payload / 'Mac使用说明.md')

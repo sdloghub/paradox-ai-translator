@@ -1,4 +1,5 @@
 from pathlib import Path
+import platform
 
 root = Path(SPECPATH).parent
 analysis = Analysis(
@@ -15,13 +16,13 @@ analysis = Analysis(
 pyz = PYZ(analysis.pure)
 exe = EXE(pyz, analysis.scripts, [], exclude_binaries=True,
           name='WorkshopTranslator', debug=False, strip=False, upx=False,
-          console=False, target_arch='arm64')
+          console=False, target_arch=platform.machine())
 collection = COLLECT(exe, analysis.binaries, analysis.datas,
                      strip=False, upx=False, name='WorkshopTranslator-macOS-runtime')
 app = BUNDLE(collection, name='WorkshopTranslator.app',
              icon=str(root / 'build/macos-icon.icns'),
              bundle_identifier='com.workshoptranslator.desktop',
              info_plist={'CFBundleDisplayName': 'Workshop 翻译程序',
-                         'CFBundleShortVersionString': '0.1.1',
+                         'CFBundleShortVersionString': '0.2.0',
                          'NSHighResolutionCapable': True,
                          'LSMinimumSystemVersion': '11.0'})
