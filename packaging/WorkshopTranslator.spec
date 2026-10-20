@@ -7,7 +7,7 @@ analysis = Analysis(
     datas=[(str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.'),
            (str(root / 'entry_browser_ui.js'), '.'),
            (str(root / 'vendor'), 'vendor'), (str(root / 'assets'), 'assets')],
-    hiddenimports=['paradox', 'request', 'openai', 'winreg', 'translation_cache', 'tkinter.filedialog'],
+    hiddenimports=['paradox', 'request', 'openai', 'winreg', 'translation_cache', 'aggregate_export', 'mod_export', 'tkinter.filedialog'],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=['pandas', 'numpy', 'scipy', 'matplotlib', 'PIL', 'IPython', 'torch', 'sympy'],
     noarchive=False,

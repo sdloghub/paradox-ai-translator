@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.17-chinese-editor.1'
+APP_VERSION = '2026.10.20-parallel.1'
 
 
 def program_directory():
@@ -71,7 +71,7 @@ GAMES = {'281990': ('st', '群星'), '394360': ('hoi4', '钢铁雄心4'),
          '529340': ('vic3', '维多利亚3')}
 DEFAULT_CONFIG = {'api_format': 'openai', 'provider': '', 'config_name': '', 'base_url': 'https://api.openai.com/v1',
                   'api_key': '', 'model': 'gpt-4.1-mini', 'batch_size': 10,
-                  'concurrency': 3, 'steam_libraries': [], 'aggregate_export': True}
+                  'concurrency': 3, 'steam_libraries': [], 'aggregate_export': True, 'developer_mode': False}
 
 
 def atomic_bytes(path, data, private=False):
@@ -187,8 +187,17 @@ def target_path(name, game):
     return PurePosixPath(*parts).as_posix()
 
 
+def serialized_io(function):
+    def wrapped(self, *args, **kwargs):
+        with self.io_lock:
+            return function(self, *args, **kwargs)
+    return wrapped
+
+
 class WorkshopService:
     def __init__(self, data_dir=None, demo=False, program_dir=None):
+        self.io_lock = threading.RLock()
+        self.task_context = threading.local()
         self.demo = demo
         self.data_dir = Path(data_dir or default_data_dir(demo)).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -253,6 +262,10 @@ class WorkshopService:
                 db.execute("ALTER TABLE versions ADD COLUMN origins TEXT NOT NULL DEFAULT '[]'")
             db.execute('CREATE TABLE IF NOT EXISTS seed_imports (path TEXT PRIMARY KEY, signature TEXT NOT NULL)')
             db.execute("CREATE TABLE IF NOT EXISTS source_runs (id INTEGER PRIMARY KEY, kind TEXT, name TEXT, created_at TEXT)")
+            db.execute('CREATE TABLE IF NOT EXISTS deleted_cache_versions (version_id INTEGER PRIMARY KEY, mod_id TEXT NOT NULL)')
+            db.execute('''CREATE TABLE IF NOT EXISTS deployment_recovery (
+                deployment_id INTEGER PRIMARY KEY, mod_id TEXT NOT NULL,
+                originals BLOB NOT NULL, chinese BLOB NOT NULL)''')
         self.database.chmod(0o600)
         from translation_cache import ModCache
         self.cache = ModCache(self)
@@ -265,7 +278,10 @@ class WorkshopService:
         for item in self.inventory.values():
             item.setdefault('scan_state', '待复查' if item.get('counts') else '未扫描')
         self.job = {'running': False, 'kind': '', 'messages': [], 'result': None, 'error': None}
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self.jobs = {}
+        self.job_sequence = 0
+        self.analyzed_mod_ids = set()
 
     def setup_demo(self):
         mod = self.data_dir / 'demo_steam/steamapps/workshop/content/394360/1000000001'
@@ -293,7 +309,8 @@ class WorkshopService:
             db.close()
 
     def config(self):
-        return {**DEFAULT_CONFIG, **json.loads(self.config_path.read_text(encoding='utf-8'))}
+        snapshot = getattr(self.task_context, 'config', None)
+        return dict(snapshot) if snapshot is not None else {**DEFAULT_CONFIG, **json.loads(self.config_path.read_text(encoding='utf-8'))}
 
     def public_config(self):
         cfg = self.config()
@@ -308,7 +325,7 @@ class WorkshopService:
         if mode not in self.config_directories:
             raise ValueError('请选择程序文件夹或用户文件夹')
         with self.lock:
-            if self.job['running']:
+            if self.busy():
                 raise ValueError('请等待任务结束后切换配置保存位置')
             if mode == self.storage_mode:
                 return self.config_storage()
@@ -353,6 +370,7 @@ class WorkshopService:
             self.providers_path = target / 'providers.json'
             return self.config_storage()
 
+    @serialized_io
     def save_config(self, changes):
         cfg = self.config() if self.config_path.exists() else dict(DEFAULT_CONFIG)
         allowed = set(DEFAULT_CONFIG)
@@ -368,6 +386,8 @@ class WorkshopService:
             raise ValueError('Steam 库目录格式错误')
         if type(cfg['aggregate_export']) is not bool:
             raise ValueError('聚合汉化开关必须为开启或关闭')
+        if type(cfg['developer_mode']) is not bool:
+            raise ValueError('开发者模式必须为开启或关闭')
         for key, maximum in [('batch_size', 50), ('concurrency', 10)]:
             cfg[key] = int(cfg[key])
             if not 1 <= cfg[key] <= maximum:
@@ -398,8 +418,6 @@ class WorkshopService:
                 for name, profile in registry.get('profiles', {}).items()]
 
     def switch_profile(self, name):
-        if self.status()['running']:
-            raise ValueError('请等待任务结束后切换配置')
         registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
         profile = registry.get('profiles', {}).get(name)
         if not isinstance(profile, dict):
@@ -414,33 +432,71 @@ class WorkshopService:
 
     def log(self, message):
         with self.lock:
-            self.job['messages'] = (self.job['messages'] + [str(message)])[-300:]
+            job = getattr(self.task_context, 'job', self.job)
+            job['messages'] = (job['messages'] + [str(message)])[-300:]
 
-    def start(self, kind, action):
+    def busy(self, identifier=None):
         with self.lock:
-            if self.job['running']:
-                raise ValueError('已有任务正在运行，请等待完成')
-            self.job = {'running': True, 'kind': kind, 'messages': [], 'result': None, 'error': None}
+            if not self.jobs:
+                return bool(self.job['running'])
+            return any(j['running'] and (identifier is None or j['mod_id'] == identifier
+                       or (j['mod_id'] is None and j['kind'] != 'scan')) for j in self.jobs.values())
+
+    def _reserve(self, kind, identifier):
+        with self.lock:
+            conflict = self.jobs.get('__global__', {}).get('running', False) if kind == 'scan' else self.busy(identifier)
+            if conflict:
+                raise ValueError('此 Mod 正在执行任务，请等待完成' if identifier else '请等待当前任务完成后刷新目录')
+            self.job_sequence += 1
+            job = {'id': self.job_sequence, 'mod_id': identifier, 'running': True,
+                   'kind': kind, 'messages': [], 'result': None, 'error': None}
+            self.jobs[identifier or '__global__'] = job
+            self.job = job
+            return job
+
+    @contextmanager
+    def operation(self, kind, identifier):
+        job = self._reserve(kind, identifier)
+        previous = getattr(self.task_context, 'job', None)
+        self.task_context.job = job
+        self.task_context.config = self.config()
+        try:
+            yield job
+        finally:
+            with self.lock:
+                job['running'] = False
+            self.task_context.job = previous or self.job
+            self.task_context.config = None
+
+    def start(self, kind, action, identifier=None):
+        job = self._reserve(kind, identifier)
+        config = self.config()
         def run():
+            self.task_context.job = job
+            self.task_context.config = config
             try:
                 result = action()
                 with self.lock:
-                    self.job['result'] = result
+                    job['result'] = result
             except Exception as error:
-                # Avoid exposing API provider exception bodies or credentials.
                 from paradox import LocalisationError
                 detail = f'：{error}' if isinstance(error, LocalisationError) else ''
                 self.log(f'任务停止：{type(error).__name__}{detail}')
                 with self.lock:
-                    self.job['error'] = str(error) if isinstance(error, (ValueError, FileNotFoundError, RuntimeError, ImportError)) else type(error).__name__
+                    job['error'] = str(error) if isinstance(error, (ValueError, FileNotFoundError, RuntimeError, ImportError)) else type(error).__name__
             finally:
                 with self.lock:
-                    self.job['running'] = False
+                    job['running'] = False
         threading.Thread(target=run, daemon=True).start()
+        return job['id']
 
     def status(self):
         with self.lock:
-            return dict(self.job)
+            return {**self.job, 'running': self.busy()}
+
+    def task_statuses(self):
+        with self.lock:
+            return {key: {**job, 'messages': list(job['messages'])} for key, job in self.jobs.items()}
 
     def scan(self, fetch=workshop_details):
         found, fingerprints = {}, {}
@@ -514,11 +570,22 @@ class WorkshopService:
                 db.execute('INSERT OR REPLACE INTO mods VALUES (?,?,?,?,?,?,?)',
                            (identifier, item['uid'], item['appid'], item['title'], item['path'], item['url'], now()))
                 item['translated'] = bool(db.execute('SELECT 1 FROM versions WHERE mod_id=? LIMIT 1', (identifier,)).fetchone())
-        self.inventory = found
+        # A directory refresh never replaces live objects being modified by a Mod task.
+        with self.lock:
+            for identifier, old in self.inventory.items():
+                if self.busy(identifier):
+                    if identifier in found:
+                        old['workshop'] = found[identifier].get('workshop', {})
+                    found[identifier] = old
+                elif identifier in found and old.get('path') == found[identifier].get('path'):
+                    for field in ('counts', 'cache_selection', 'translated'):
+                        if field in old:
+                            found[identifier][field] = old[field]
+            self.inventory = found
         with self.connect() as db:
             db.execute('DELETE FROM scan_snapshots')
             for identifier, item in found.items():
-                self.persist_item(item, fingerprints[identifier], db)
+                self.persist_item(item, fingerprints.get(identifier), db)
         self.log('目录刷新完成，未扫描的 Mod 请进入工作台扫描')
         return list(found.values())
 
@@ -535,11 +602,13 @@ class WorkshopService:
                     int(item.get('_metadata_ok', cached[1] if cached else False)),
                     json.dumps(item, ensure_ascii=False)))
 
+    @serialized_io
     def source_label(self, kind, provider=''):
         if not isinstance(provider, str) or len(provider) > 120:
             raise ValueError('来源名称需为 120 字以内的文字')
         with self.connect() as db:
             date = str(datetime.now().date())
+            db.execute('BEGIN IMMEDIATE')
             revision = db.execute('SELECT COUNT(*) FROM source_runs WHERE created_at LIKE ?', (date + '%',)).fetchone()[0] + 1
             label = provider.strip() or f'翻译-{date}-{revision}'
             db.execute('INSERT INTO source_runs(kind,name,created_at) VALUES (?,?,?)', (kind, label, datetime.now().isoformat()))
@@ -552,6 +621,7 @@ class WorkshopService:
         atomic_bytes(self.providers_path, json.dumps(registry, ensure_ascii=False, indent=2).encode(), private=True)
         return label
 
+    @serialized_io
     def save_completed(self):
         with self.connect() as db:
             db.row_factory = sqlite3.Row
@@ -610,8 +680,9 @@ class WorkshopService:
         # matches the last deployed translation. Changed upstream files are re-read.
         if item['game'] == 'eu4':
             with self.connect() as db:
-                row = db.execute('''SELECT v.originals,v.chinese FROM deployments d JOIN versions v
-                                    ON v.id=d.version_id WHERE v.mod_id=? AND d.path=?
+                row = db.execute('''SELECT COALESCE(v.originals,r.originals),COALESCE(v.chinese,r.chinese) FROM deployments d LEFT JOIN versions v
+                                    ON v.id=d.version_id LEFT JOIN deployment_recovery r ON r.deployment_id=d.id
+                                    WHERE COALESCE(v.mod_id,r.mod_id)=? AND d.path=?
                                     ORDER BY d.id DESC LIMIT 1''', (item['id'], item['path'])).fetchone()
             if row:
                 originals, translated = unarchive(row[0]), unarchive(row[1])
@@ -619,6 +690,17 @@ class WorkshopService:
                     if files.get(name) == translated.get(name):
                         files[name] = original
         return files
+
+    def edit_key(self, identifier, entry_id, key):
+        if not isinstance(key, str) or not re.fullmatch(r'[^\s:"#\\]+', key) or len(key) > 512:
+            raise ValueError('键值不能为空，不能包含空格、冒号、引号、反斜杠或 #')
+        row = self.cache.browser.get(identifier, entry_id)
+        raw = row['original_line']
+        if ':' not in raw:
+            raise ValueError('无法识别键名，请编辑完整原文件行')
+        prefix, rest = raw.split(':', 1)
+        indentation = prefix[:len(prefix) - len(prefix.lstrip())]
+        return self.edit_entry(identifier, entry_id, indentation + key + ':' + rest)
 
     def edit_entry(self, identifier, entry_id, replacement):
         if not isinstance(replacement, str) or len(replacement) > 16000:
@@ -694,7 +776,8 @@ class WorkshopService:
         if not request.valid_translation(entry['text'], replacement):
             raise ValueError('变量、图标、颜色或转义符不匹配，请保留英文中的格式标记')
         if replacement == expected:
-            return {'saved':False, 'deployed':row['auto_status'] == 'translated'}
+            counts = self.analyze(identifier)
+            return {'saved':False, 'deployed':row['auto_status'] == 'translated', 'counts':counts}
         key = (identifier, entry['source_file'], entry['key'], digest(entry['text']))
         with self.connect() as db:
             previous = db.execute('SELECT chinese,origin FROM translation_entries WHERE mod_id=? AND source_file=? AND entry_key=? AND source_hash=?', key).fetchone()
@@ -746,7 +829,7 @@ class WorkshopService:
             self.cache.put(db, identifier, entry, replacement, origin)
             if deployed:
                 source_hash = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(content).digest() for name, content in sorted(sources.items()))).hexdigest()
-                version = db.execute('INSERT INTO versions(mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES (?,?,?,?,?,?,?,?,?)',
+                version = db.execute('INSERT INTO versions(id,mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM versions UNION ALL SELECT version_id AS id FROM deleted_cache_versions)),?,?,?,?,?,?,?,?,?)',
                                      (identifier, now(), item['title'], source_hash, '手动修订', archive(sources), archive(translated), '手动修订', '[]')).lastrowid
         aggregate = {'enabled':False}
         try:
@@ -758,30 +841,30 @@ class WorkshopService:
                     self.cache.put(db, identifier, entry, previous[0], previous[1])
                     db.execute('DELETE FROM versions WHERE id=?', (version,))
             raise
-        self.cache.sync_workspace(item, sources)
-        item['counts'] = self.cache.stats(item, sources)
-        item['scan_state'] = '已扫描'
-        self.persist_item(item)
-        self.save_completed()
+        counts = self.analyze(identifier)
         if version is not None:
             with self.connect() as db:
                 db.execute('UPDATE versions SET origins=? WHERE id=?', (json.dumps(item['counts']['origins'], ensure_ascii=False), version))
         self.log(f"中文修订已保存：{entry['source_file']}，第 {entry['line']} 行；{'已备份并回写原 Mod' if deployed else '已更新缓存，尚未回写 Mod'}；修订记录 {edit_id}")
-        return {'saved':True, 'deployed':deployed, 'edit_id':edit_id, 'version_id':version, 'aggregate':aggregate}
+        return {'saved':True, 'deployed':deployed, 'edit_id':edit_id, 'version_id':version, 'aggregate':aggregate, 'counts':counts}
 
     def analyze(self, identifier):
         from translation_cache import candidates
         item = self.get_mod(identifier)
         sources = self.original_sources(item)
         imported = self.cache.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文')
-        self.cache.sync_workspace(item, sources)
+        self.cache.sync_workspace(item, sources, collect=False)
+        item['cache_selection'] = self.cache.selection(identifier)
         item['counts'] = self.cache.stats(item, sources)
         item['scan_state'] = '已扫描'
+        self.inventory[identifier] = item
         self.log(f"{item['title']}：已翻译 {item['counts']['deployed']} / 已缓存 {item['counts']['cached']} / 待翻译 {item['counts']['untranslated']} / 格式报错 {item['counts']['parse_errors']} 行")
         for problem in item['counts']['issues']:
             self.log(f"原文件：{Path(item['path']) / problem['file']}，第 {problem['line']} 行\n原因：{problem['reason']}\n原文：{problem['original_line']}")
-        self.persist_item(item)
+        stamp = directory_stamp(Path(item['path'])) if item.get('discovery_source') == '目录回退' else None
+        self.persist_item(item, stamp)
         self.save_completed()
+        self.analyzed_mod_ids.add(identifier)
         return {**item['counts'], **imported}
 
     def import_cache(self, identifier, path, provider=""):
@@ -794,7 +877,8 @@ class WorkshopService:
         translations = candidates(chosen, item['game'])
         label = self.source_label('导入', provider)
         result = self.cache.import_candidates(item, sources, translations, '导入 · ' + label)
-        self.cache.sync_workspace(item, sources)
+        self.cache.sync_workspace(item, sources, collect=False)
+        item['cache_selection'] = self.cache.selection(identifier)
         item['counts'] = self.cache.stats(item, sources)
         item['scan_state'] = '已扫描'
         self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条")
@@ -809,6 +893,11 @@ class WorkshopService:
         data = self.cache.export_package(item)
         self.log(f"{item['title']}：已导出中文 YML 目录树与哈希缓存压缩包")
         return data
+
+    def generate_mod(self, identifier, title='', introduction=''):
+        from mod_export import build
+        self.analyze(identifier)
+        return build(self, self.get_mod(identifier), title, introduction)
 
     def translate(self, identifier, translator=None, deploy=True, provider=None):
         item = self.get_mod(identifier)
@@ -841,7 +930,23 @@ class WorkshopService:
                 raise ValueError(f'输出文件名冲突：{name}')
             targets.add(target)
             atomic_bytes(inputs / name, data)
-        self.log(f"已复制 {len(sources)} 个英文文件到工作目录；开始翻译（复用匹配缓存）")
+        from translation_cache import entries, aligned_texts, digest, duplicate_issues
+        duplicate_keys = {issue["key"] for issue in duplicate_issues(entries(sources, item["game"], strict=False))}
+        local_rows = {}
+        for name in sources:
+            target = Path(item['path']) / target_path(name, item['game'])
+            if target.is_file():
+                local_rows[name] = aligned_texts(entries({name:sources[name]}, item['game'], strict=False),
+                    entries({name:target.read_bytes()}, item['game'], strict=False))
+        allowed = {(f,k,h):text for f,k,h,text,origin in self.cache.active_rows(item, local_rows)}
+        for name, data in sources.items():
+            payload = {}
+            for e in entries({name:data}, item['game'], strict=False):
+                text = allowed.get((name,e['key'],digest(e['text'])))
+                if text is not None:
+                    paradox.store_cached_entry(payload, e['key'], e['text'], text)
+            atomic_bytes(workspace / 'already' / item['game'] / (name + '.cache.json'), json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+        self.log(f"已复制 {len(sources)} 个英文文件到工作目录；开始翻译（按缓存选项复用）")
         failures = 0
         issues = []
         translated = {}
@@ -851,23 +956,26 @@ class WorkshopService:
                 self.log(f'文件 {index}/{len(sources)}：{name}')
                 relative = Path(item['game']) / name
                 file_issues = []
-                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues)
+                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues, duplicate_keys=duplicate_keys)
                 issues.extend({**problem, 'file': name, 'original_file': str(Path(item['path']) / name)} for problem in file_issues)
                 output = staging / paradox.output_name(relative, item['game'])
                 data = output.read_bytes()
                 if not data.startswith(b'\xef\xbb\xbf'):
                     data = b'\xef\xbb\xbf' + data
                 translated[target_path(name, item['game'])] = data
+            choice = self.cache.selection(identifier)
+            self.cache.select(identifier, choice['enabled'])
             self.cache.sync_workspace(item, sources, origin='AI · ' + label)
+            item['cache_selection'] = self.cache.selection(identifier)
             item['counts'] = self.cache.stats(item, sources)
             item['scan_state'] = '已扫描'
             self.persist_item(item)
             self.save_completed()
             atomic_bytes(workspace / 'translation-report.json', json.dumps({'error_lines': len(issues), 'issues': issues}, ensure_ascii=False, indent=2).encode('utf-8'))
-            digest = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() for name, data in sorted(sources.items()))).hexdigest()
+            source_digest = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() for name, data in sorted(sources.items()))).hexdigest()
             with self.connect() as db:
-                cursor = db.execute('INSERT INTO versions(mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES (?,?,?,?,?,?,?,?,?)',
-                                    (identifier, now(), item['title'], digest, '已备份', archive(sources), archive(translated), label, json.dumps(item['counts']['origins'], ensure_ascii=False)))
+                cursor = db.execute('INSERT INTO versions(id,mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM versions UNION ALL SELECT version_id AS id FROM deleted_cache_versions)),?,?,?,?,?,?,?,?,?)',
+                                    (identifier, now(), item['title'], source_digest, '已备份', archive(sources), archive(translated), label, json.dumps(item['counts']['origins'], ensure_ascii=False)))
                 version = cursor.lastrowid
         self.log(f'中文文件与英文原文已备份到 SQLite，版本 {version}')
         aggregate = {'enabled':False, 'pending_deployment':True}
@@ -876,6 +984,7 @@ class WorkshopService:
         if issues:
             with self.connect() as db:
                 db.execute('UPDATE versions SET status=? WHERE id=?', (f'{"已回写" if deploy else "已备份"}（{len(issues)} 行保留英文）', version))
+        item['cache_selection'] = self.cache.selection(identifier)
         item['translated'] = True
         self.persist_item(item)
         self.save_completed()
@@ -937,13 +1046,101 @@ class WorkshopService:
             from aggregate_export import export
             aggregate = export(self, item, files, version_id)
             if aggregate['enabled']:
-                self.log(f"已复制 {aggregate['files']} 个文件到聚合汉化目录：{aggregate['path']}")
+                self.log(f"开发者自动生成翻译 Mod：{aggregate['path']}")
                 for warning in aggregate['warnings']:
                     self.log(warning)
         except Exception as error:
             aggregate = {'enabled':True, 'error':f'{type(error).__name__}: {error}'}
-            self.log('原 Mod 已完成回写；聚合汉化复制失败：' + aggregate['error'])
+            self.log('原 Mod 已完成回写；开发者自动生成翻译 Mod 失败：' + aggregate['error'])
         return {'files': len(files), 'path': str(mod), 'version_id': int(version_id), 'aggregate':aggregate}
+
+    def select_cache(self, identifier, enabled, version_id=None):
+        self.get_mod(identifier)
+        self.cache.select(identifier, enabled, version_id)
+        self.get_mod(identifier)['cache_selection'] = self.cache.selection(identifier)
+        counts = self.analyze(identifier)
+        return {'counts': counts, 'selection': self.cache.selection(identifier)}
+
+    def delete_cache_version(self, identifier, version_id):
+        if type(version_id) is not int:
+            raise ValueError('缓存版本无效')
+        removed = self.cache.delete_version(identifier, version_id)
+        item = self.inventory.get(identifier)
+        if item:
+            item['cache_selection'] = self.cache.selection(identifier)
+            item['translated'] = bool(item['cache_selection']['versions'])
+            if Path(item['path']).is_dir():
+                sources = self.original_sources(item)
+                self.cache.sync_workspace(item, sources, collect=False)
+                item['counts'] = self.cache.stats(item, sources)
+                item['scan_state'] = '已扫描'
+            self.persist_item(item)
+        self.save_completed()
+        self.log(f'已删除 SQL 缓存版本 #{version_id}（{removed} 条独占译文映射）；其他版本和本机中文保留')
+        return {'version_id': version_id, 'removed': removed}
+
+    def clear_translations(self, identifier):
+        item = self.get_mod(identifier)
+        root = Path(item['path']).resolve()
+        sources = self.original_sources(item)
+        removed = []
+        backup_dir = None
+        if item['game'] == 'eu4':
+            with self.connect() as db:
+                row = db.execute('''SELECT COALESCE(v.originals,r.originals),COALESCE(v.chinese,r.chinese) FROM deployments d LEFT JOIN versions v
+                                    ON v.id=d.version_id LEFT JOIN deployment_recovery r ON r.deployment_id=d.id
+                                    WHERE COALESCE(v.mod_id,r.mod_id)=? AND d.path=?
+                                    ORDER BY d.id DESC LIMIT 1''', (item['id'], item['path'])).fetchone()
+            if row:
+                originals, translated = unarchive(row[0]), unarchive(row[1])
+                for name, original in originals.items():
+                    target = root / name
+                    if target.is_symlink() or not target.resolve().is_relative_to(root):
+                        raise ValueError('文件路径包含符号链接或超出 Mod 目录')
+                    if target.is_file() and target.read_bytes() == translated.get(name):
+                        if backup_dir is None:
+                            backup_dir = self.data_dir / 'cleared_translation_backups' / item['appid'] / item['uid'] / (str(time.time_ns()) + '-' + secrets.token_hex(4))
+                        atomic_bytes(backup_dir / name, target.read_bytes(), private=True)
+                        atomic_bytes(target, original)
+                        removed.append(name)
+        else:
+            candidates_to_remove = set()
+            for name in sources:
+                candidates_to_remove.add(target_path(name, item['game']))
+            for folder_name in ('localisation', 'localization'):
+                folder = root / folder_name
+                if not folder.is_dir() or folder.is_symlink():
+                    continue
+                for path in sorted(folder.rglob('*.yml')):
+                    if path.is_symlink() or not path.resolve().is_relative_to(root):
+                        continue
+                    rel = path.relative_to(root).as_posix()
+                    if rel in sources:
+                        continue
+                    try:
+                        text = path.read_bytes().decode('utf-8-sig')
+                    except (UnicodeError, OSError):
+                        continue
+                    if 'simp_chinese' in Path(rel).parts or 'l_simp_chinese' in path.name or re.search(r'^\s*l_simp_chinese\s*:', text, re.M):
+                        candidates_to_remove.add(rel)
+            for rel in sorted(candidates_to_remove):
+                target = root / rel
+                if target.is_symlink() or not target.resolve().is_relative_to(root):
+                    raise ValueError('中文文件路径包含符号链接或超出 Mod 目录')
+                if target.is_file():
+                    if backup_dir is None:
+                        backup_dir = self.data_dir / 'cleared_translation_backups' / item['appid'] / item['uid'] / (str(time.time_ns()) + '-' + secrets.token_hex(4))
+                    atomic_bytes(backup_dir / rel, target.read_bytes(), private=True)
+                    target.unlink()
+                    removed.append(rel)
+        with self.connect() as db:
+            db.execute("DELETE FROM entry_reviews WHERE mod_id=? AND status='translated'", (identifier,))
+        counts = self.analyze(identifier)
+        if removed:
+            self.log(f'已清除 {len(removed)} 个翻译文件并完成重新扫描；备份目录：{backup_dir}')
+        else:
+            self.log(f"{item['title']}：未发现需要清除的本机翻译文件，已重新扫描")
+        return {'cleared_files': len(removed), 'files': removed, 'backup_path': str(backup_dir) if backup_dir else '', 'counts': counts}
 
 
 def parse_keyvalues(text):
@@ -1102,11 +1299,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized():
             return self.send(403, {'error': '访问令牌无效'})
         if self.path == '/api/state':
+            from mod_export import documents_mod_root
             service = self.server.service
             return self.send(200, {'config': service.public_config(), 'profiles': service.profiles(), 'mods': list(service.inventory.values()),
-                                   'history': service.history(), 'job': service.status(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
+                                   'history': service.history(), 'analyzed_mod_ids': sorted(service.analyzed_mod_ids), 'job': service.status(), 'jobs': service.task_statuses(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
                                    'app_version': APP_VERSION, 'program_dir': str(program_directory()),
-                                   'aggregate_directory':str(service.data_dir / 'aggregate_mods')})
+                                   'aggregate_directory':str(documents_mod_root(service))})
         self.send(404, {'error': '未找到'})
 
     def do_POST(self):
@@ -1125,25 +1323,31 @@ class Handler(BaseHTTPRequestHandler):
                 result = service.cache.browser.list(item['id'], body.get('status', 'all'), body.get('query', ''),
                                                     body.get('page', 1), body.get('page_size', 50))
                 return self.send(200, {**result, 'scan_state': item.get('scan_state', '未扫描'),
-                                       'busy': service.status()['running']})
+                                       'busy': service.busy(item['id'])})
             if self.path == '/api/entry-status':
-                with service.lock:
-                    if service.job['running']:
-                        raise ValueError('请等待任务结束后标注条目')
+                with service.operation('entry-status', body['id']):
                     service.get_mod(body['id'])
-                    return self.send(200, service.cache.browser.mark(body['id'], body['entry_id'], body['status']))
+                    result = service.cache.browser.mark(body['id'], body['entry_id'], body['status'])
+                    counts = service.analyze(body['id'])
+                return self.send(200, {**result, 'counts': counts})
             if self.path == '/api/translation-edit':
                 identifier, entry_id = body['id'], body['entry_id']
                 replacement, expected = body['text'], body['expected']
                 service.get_mod(identifier)
                 service.cache.browser.get(identifier, entry_id)
-                service.start('edit-translation', lambda: service.edit_translation(identifier, entry_id, replacement, expected))
+                service.start('edit-translation', lambda: service.edit_translation(identifier, entry_id, replacement, expected), identifier)
                 return self.send(202, {'ok':True})
+            if self.path == '/api/entry-key':
+                identifier, entry_id, key = body['id'], body['entry_id'], body['key']
+                service.get_mod(identifier)
+                service.cache.browser.get(identifier, entry_id)
+                service.start('edit-entry', lambda: service.edit_key(identifier, entry_id, key), identifier)
+                return self.send(202, {'ok': True})
             if self.path == '/api/entry-edit':
                 identifier, entry_id, replacement = body['id'], body['entry_id'], body['text']
                 service.get_mod(identifier)
                 service.cache.browser.get(identifier, entry_id)
-                service.start('edit-entry', lambda: service.edit_entry(identifier, entry_id, replacement))
+                service.start('edit-entry', lambda: service.edit_entry(identifier, entry_id, replacement), identifier)
                 return self.send(202, {'ok': True})
             if self.path == '/api/profile':
                 return self.send(200, service.switch_profile(body['name']))
@@ -1151,49 +1355,86 @@ class Handler(BaseHTTPRequestHandler):
                 with service.lock:
                     if service.job['running']:
                         raise ValueError('请等待任务结束后切换聚合汉化开关')
+                    if not service.config()['developer_mode']:
+                        raise ValueError('自动生成翻译 Mod 仅在开发者模式可用')
                     result = service.save_config({'aggregate_export':body['enabled']})
                 return self.send(200, result)
             if self.path == '/api/open-aggregate':
-                folder = service.data_dir / 'aggregate_mods'
+                from mod_export import documents_mod_root
+                if not service.config()['developer_mode']:
+                    raise ValueError('开发者模式未开启')
+                folder = documents_mod_root(service)
                 folder.mkdir(parents=True, exist_ok=True)
                 open_folder(folder)
                 return self.send(200, {'ok':True})
             if self.path == '/api/config-storage':
                 return self.send(200, service.switch_config_storage(body['mode']))
             if self.path == '/api/config':
-                if service.status()['running']:
-                    raise ValueError('请等待任务结束后修改配置')
                 return self.send(200, service.save_config(body))
             if self.path == '/api/scan':
                 service.start('scan', service.scan)
             elif self.path == '/api/translate':
                 identifier = body['id']
                 service.get_mod(identifier)
-                service.start('translate', lambda: service.translate(identifier))
+                service.start('translate', lambda: service.translate(identifier), identifier)
             elif self.path == '/api/restore':
                 identifier, version = body['id'], int(body['version_id'])
                 service.get_mod(identifier)
-                service.start('restore', lambda: service.restore(version, identifier))
+                service.start('restore', lambda: service.restore(version, identifier), identifier)
             elif self.path == '/api/analyze':
                 identifier = body['id']
                 service.get_mod(identifier)
-                service.start('analyze', lambda: service.analyze(identifier))
+                service.start('analyze', lambda: service.analyze(identifier), identifier)
+            elif self.path == '/api/cache-selection':
+                identifier, enabled = body['id'], body['enabled']
+                service.get_mod(identifier)
+                service.start('cache-selection', lambda: service.select_cache(identifier, enabled, body.get('version_id')), identifier)
+            elif self.path == '/api/delete-cache-version':
+                identifier, version_id = body['id'], body['version_id']
+                service.start('delete-cache-version', lambda: service.delete_cache_version(identifier, version_id), identifier)
+            elif self.path == '/api/clear-translations':
+                identifier = body['id']
+                service.get_mod(identifier)
+                service.start('clear-translations', lambda: service.clear_translations(identifier), identifier)
             elif self.path == '/api/import':
                 identifier, chosen, provider = body['id'], body['path'], body.get('provider', '')
                 service.get_mod(identifier)
-                service.start('import', lambda: service.import_cache(identifier, chosen, provider))
+                service.start('import', lambda: service.import_cache(identifier, chosen, provider), identifier)
             elif self.path == '/api/export':
                 item = service.get_mod(body['id'])
                 if body.get('format') == 'zip':
-                    return self.send(200, service.export_package(body['id']), 'application/zip')
-                return self.send(200, service.cache.export(item))
+                    with service.operation('export', body['id']):
+                        data = service.export_package(body['id'])
+                    return self.send(200, data, 'application/zip')
+                with service.operation('export', item['id']):
+                    data = service.cache.export(item)
+                return self.send(200, data)
             elif self.path == '/api/export-package':
-                return self.send(200, service.export_package(body['id']), 'application/zip')
+                with service.operation('export', body['id']):
+                    data = service.export_package(body['id'])
+                return self.send(200, data, 'application/zip')
+            elif self.path == '/api/generate-mod':
+                identifier = body['id']
+                title, introduction = body.get('title', ''), body.get('introduction', '')
+                service.get_mod(identifier)
+                service.start('generate-mod', lambda: service.generate_mod(identifier, title, introduction), identifier)
+                return self.send(202, {'ok':True})
+            elif self.path in ('/api/download-mod', '/api/open-generated-mod'):
+                from mod_export import output_root, read_manifest, safe_id
+                item = service.get_mod(body['id'])
+                root = output_root(service, item)
+                if not read_manifest(service, item):
+                    raise ValueError('请先生成翻译 Mod')
+                if self.path == '/api/open-generated-mod':
+                    open_folder(root)
+                    return self.send(200, {'ok':True})
+                path = root / (safe_id(item) + '.zip')
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError('生成的 ZIP 不存在或路径无效，请重新生成')
+                return self.send(200, path.read_bytes(), 'application/zip')
             elif self.path == '/api/submit':
                 return self.send(501, {'error': 'Steam 创意工坊投稿接口尚未启用'})
             elif self.path == '/api/pick':
-                if service.status()['running']:
-                    raise ValueError('请等待任务结束后选择文件')
                 return self.send(200, {'path': pick_import_path(body.get('kind', 'file'))})
             elif self.path == '/api/open':
                 identifier = body['id']

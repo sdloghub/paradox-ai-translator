@@ -139,6 +139,12 @@ button.scan-action{background:var(--scan-bg);border-color:var(--scan-bg);color:v
 button.scan-action:hover{background:var(--scan-hover);border-color:var(--scan-hover)}
 button.ai-action{background:var(--ai-bg);border-color:var(--ai-bg);color:var(--ai-fg);font-weight:600;padding:10px 20px}
 button.ai-action:hover{background:var(--ai-hover);border-color:var(--ai-hover)}
+button.danger-action{background:var(--err-fg);border-color:var(--err-fg);color:var(--surface);font-weight:650}
+button.danger-action:hover{background:var(--err-fg);border-color:var(--ink);outline:2px solid var(--err-border);outline-offset:2px}
+.cache-options{margin:16px 0;padding:14px;background:var(--surface-subtle);border:1px solid var(--line);border-radius:6px}
+.cache-options label{margin:0;color:var(--ink)}
+.cache-options input[type="checkbox"]{width:auto;margin-right:8px;accent-color:var(--accent)}
+.cache-options select{margin:10px 0;background:var(--surface)}
 button:active{transform:scale(.99)}
 button:disabled{opacity:.42;cursor:default;transform:none}
 button:focus-visible,.mod:focus-visible,summary:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
@@ -256,6 +262,36 @@ dialog::backdrop{background:var(--backdrop)}
 .aggregate-switch{display:flex;align-items:center;gap:10px;margin:0 0 10px;color:var(--ink);font-size:13px;cursor:pointer}
 .aggregate-switch input{width:16px;height:16px;accent-color:var(--accent)}
 .aggregate-panel .path{margin-top:8px}
+.history-groups{display:flex;flex-direction:column;gap:10px}
+.history-mod-group{border:1px solid var(--line);border-radius:6px;padding:0;background:var(--surface);overflow:hidden}
+.history-mod-group>summary.history-mod-summary{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;user-select:none;transition:background .15s}
+.history-mod-group>summary.history-mod-summary:hover{background:var(--surface-subtle)}
+.history-mod-group>summary.history-mod-summary:after{float:none;margin-left:8px}
+.history-mod-group[open]>summary.history-mod-summary{border-bottom:1px solid var(--line);background:var(--surface-subtle)}
+.history-mod-versions{padding:0 16px 8px}
+.history-mod-versions table tr:last-child td{border-bottom:0}
+
+[hidden]{display:none!important}
+.action-groups{display:grid;gap:16px;margin-top:20px}
+.action-group{min-width:0}
+.action-caption{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px;letter-spacing:.04em}
+.action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:stretch}
+.action-row-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.action-row-single{grid-template-columns:minmax(0,1fr)}
+.action-row button{min-width:0;min-height:44px;padding:10px 8px;line-height:1.5;overflow-wrap:anywhere}
+.action-group-danger{padding-top:16px;border-top:1px solid var(--line)}
+.action-group-danger .action-caption{color:var(--err-fg)}
+@media(max-width:380px){.action-row-three{grid-template-columns:1fr}}
+
+/* A row is one visual group in every theme. */
+#actions .action-group:first-child button{background:var(--ai-bg);color:var(--ai-fg);border-color:var(--ai-bg)}
+#actions .action-group:first-child button:hover{background:var(--ai-hover);border-color:var(--ai-hover)}
+#actions .action-group:nth-child(2) button{background:var(--surface-subtle);color:var(--ink);border-color:var(--line-strong)}
+#actions .action-group:nth-child(3) button{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+#actions .action-group:nth-child(3) button:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+#history_panel .history-mod-group{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px}
+.task-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.task-list button{font-size:12px;text-align:left}
 </style>
 <header>
   <div>
@@ -277,9 +313,14 @@ dialog::backdrop{background:var(--backdrop)}
   </div>
 </header>
 <main><div id="toast" role="alert"></div><div class="workflow"><span>配置接口</span><span>→</span><span>刷新目录 / 扫描 Mod</span><span>→</span><span>翻译并回写</span><span>→</span><span>导入 / 导出与备份</span></div>
-<section class="card aggregate-panel" aria-labelledby="aggregate_title"><div class="row"><div class="grow"><h2 id="aggregate_title">聚合汉化目录</h2><label class="aggregate-switch" for="aggregate_export"><input id="aggregate_export" type="checkbox" checked>回写完成后，再复制一份到聚合目录（所有 Mod）</label></div><button id="open_aggregate">打开聚合文件夹</button></div><div class="sub">按游戏汇总，文件名加原 Mod UID，附带创意工坊来源清单。同一 Mod 再次完成时更新副本；关闭后保留已有成果。</div><div id="aggregate_location" class="path"></div></section>
+<section id="developer_exports" class="card aggregate-panel" aria-labelledby="aggregate_title" hidden><div class="row"><div class="grow"><h2 id="aggregate_title">开发者 · 自动生成翻译 Mod</h2><label class="aggregate-switch" for="aggregate_export"><input id="aggregate_export" type="checkbox" checked>回写后自动生成每个原 Mod 的独立翻译补丁</label></div><button id="open_aggregate">打开翻译 Mod 目录</button></div><div class="sub">仅开发者模式可见。按游戏与原 Mod UID 分开保存，不再合并不同 Mod。旧成果更新前备份；简介优先复用，首次使用默认 API 生成（无 API 时使用模板）。</div><div id="aggregate_location" class="path"></div></section>
 <div class="grid"><section class="card"><div class="row"><h2 class="grow">本机创意工坊</h2><button id="scan" class="primary">刷新目录</button></div><div class="sub library-note">优先读取 Steam ACF 已安装清单。自动按「已扫描未完全翻译 → 已扫描完全翻译 → 未扫描」排序。</div><input id="search" placeholder="在当前游戏中搜索名称或 UID" aria-label="搜索 Mod"><div id="categories" class="categories" role="tablist" aria-label="按游戏分类"></div><div class="mods" id="mods"><div class="empty">先配置 Steam 库目录，然后点击「扫描 Mod」。<br>默认自动检测本机 Steam 库。</div></div><div class="status count-bar" id="count"></div></section>
-<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前自动整合已有中文、数据库和匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="row"><button id="analyze" class="scan-action">扫描此 Mod</button><button id="translate" class="ai-action">开始AI翻译</button><button id="open">打开 Mod 文件夹</button></div><div class="row" style="margin-top:14px"><button id="browse_entries">查看 / 修改文件条目</button><button id="import_btn">导入译文</button><button id="export_btn">导出中文 + 哈希 (.zip)</button></div><div class="row" style="margin-top:14px"><button disabled title="尚未启用">投稿翻译至 Steam 创意工坊 · 尚未启用</button></div><div class="sub" style="margin-top:12px">解析或翻译失败的行保留英文，其余条目继续翻译；任务结束显示报错行数与位置。Steam 更新可能覆盖回写文件，可从备份再次复制。</div></div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><details id="settings"><summary>API 与 Steam 库设置</summary><label for="storage_mode">配置保存位置</label><div class="row"><select id="storage_mode" class="grow" style="width:auto"><option value="user">用户文件夹</option><option value="portable">程序所在文件夹</option></select><button id="switch_storage">切换保存位置</button></div><div id="config_location" class="path" style="margin-top:10px"></div><div class="sub">切换时复制当前配置和已保存的接口；同名但内容不同的旧接口会保留为另一份配置。翻译缓存和备份继续保存在数据目录。</div><label for="profile_select">已保存的 API 配置</label><div class="row"><select id="profile_select" class="grow" style="width:auto" aria-label="已保存的 API 配置"><option value="">选择已保存的配置</option></select><button id="switch_profile">使用此配置</button></div><label for="config_name">配置名称（保存同名时更新，可保存多个模型）</label><input id="config_name" placeholder="例如：日常翻译、备用接口"><label>提供商名称（可留空自动命名）</label><input id="provider" placeholder="填写你的 API 提供商名称"><label>接口格式</label><input value="OpenAI 兼容 · Chat Completions" disabled><div class="field-grid"><div><label>Base URL</label><input id="base_url" placeholder="https://api.openai.com/v1"></div><div><label>模型名称</label><input id="model" placeholder="gpt-4.1-mini"></div></div><label>API Key（留空保留已保存的密钥）</label><input id="api_key" type="password" autocomplete="new-password" placeholder="尚未设置"><div class="field-grid"><div><label>每批文本数</label><input id="batch_size" type="number" min="1" max="50"></div><div><label>并发请求数</label><input id="concurrency" type="number" min="1" max="10"></div></div><label>额外 Steam 库目录（每行一个，可填 workshop/content）</label><textarea id="libraries" rows="2" placeholder="/Volumes/Games/SteamLibrary"></textarea><div class="row" style="margin-top:12px"><button id="save">保存配置</button><span class="sub">API Key 保存到本机 JSON，不返回浏览器。</span></div></details></section></div>
+<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前按缓存选项整合已有中文和所选匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="cache-options"><label><input id="use_cache" type="checkbox" checked>导入缓存（自动复用）</label><div id="cache_details"><select id="cache_version" aria-label="选择缓存版本"><option value="">最新缓存（默认）</option></select><div id="cache_note" class="sub">默认使用最新缓存；可关闭或选择历史备份。仅复用英文哈希匹配的条目。导入缓存无法检查 Steam 尚未安装的更新。</div></div></div><div class="action-groups">
+<div class="action-group"><div class="action-caption">翻译处理</div><div class="action-row action-row-three" role="group" aria-label="扫描与翻译"><button id="analyze" class="scan-action">扫描此 Mod</button><button id="import_btn">导入译文</button><button id="translate" class="ai-action">开始 AI 翻译</button></div></div>
+<div class="action-group"><div class="action-caption">本地文件</div><div class="action-row" role="group" aria-label="查看本地文件"><button id="open">打开 Mod 文件夹</button><button id="browse_entries">查看 / 修改文件条目</button></div></div>
+<div class="action-group"><div class="action-caption">生成与导出</div><div class="action-row" role="group" aria-label="生成与导出"><button id="generate_mod" class="primary">生成翻译 Mod</button><button id="export_btn">导出中文 + 哈希 (.zip)</button></div></div>
+<div class="action-group action-group-danger"><div class="action-caption">清理本机翻译</div><div class="action-row action-row-single" role="group" aria-label="清除翻译"><button id="clear_translations" class="danger-action">清除翻译文件</button></div></div>
+</div><div class="sub" style="margin-top:12px">解析或翻译失败的行保留英文，其余条目继续翻译；任务结束显示报错行数与位置。Steam 更新可能覆盖回写文件，可从备份再次复制。</div></div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><details id="settings"><summary>API 与 Steam 库设置</summary><label for="storage_mode">配置保存位置</label><div class="row"><select id="storage_mode" class="grow" style="width:auto"><option value="user">用户文件夹</option><option value="portable">程序所在文件夹</option></select><button id="switch_storage">切换保存位置</button></div><div id="config_location" class="path" style="margin-top:10px"></div><div class="sub">切换时复制当前配置和已保存的接口；同名但内容不同的旧接口会保留为另一份配置。翻译缓存和备份继续保存在数据目录。</div><label for="profile_select">已保存的 API 配置</label><div class="row"><select id="profile_select" class="grow" style="width:auto" aria-label="已保存的 API 配置"><option value="">选择已保存的配置</option></select><button id="switch_profile">使用此配置</button></div><label for="config_name">配置名称（保存同名时更新，可保存多个模型）</label><input id="config_name" placeholder="例如：日常翻译、备用接口"><label>提供商名称（可留空自动命名）</label><input id="provider" placeholder="填写你的 API 提供商名称"><label>接口格式</label><input value="OpenAI 兼容 · Chat Completions" disabled><div class="field-grid"><div><label>Base URL</label><input id="base_url" placeholder="https://api.openai.com/v1"></div><div><label>模型名称</label><input id="model" placeholder="gpt-4.1-mini"></div></div><label>API Key（留空保留已保存的密钥）</label><input id="api_key" type="password" autocomplete="new-password" placeholder="尚未设置"><div class="field-grid"><div><label>每批文本数</label><input id="batch_size" type="number" min="1" max="50"></div><div><label>并发请求数</label><input id="concurrency" type="number" min="1" max="10"></div></div><label>额外 Steam 库目录（每行一个，可填 workshop/content）</label><textarea id="libraries" rows="2" placeholder="/Volumes/Games/SteamLibrary"></textarea><div class="row" style="margin-top:12px"><button id="save">保存配置</button><span class="sub">API Key 保存到本机 JSON，不返回浏览器。</span></div></details></section></div>
 
 <details class="card wide collapsible-panel entry-browser" id="entry_browser" aria-labelledby="entry_title">
   <summary class="panel-summary">
@@ -298,20 +339,23 @@ dialog::backdrop{background:var(--backdrop)}
   </div>
 </details>
 
-<details class="card wide collapsible-panel" id="history_panel">
-  <summary class="panel-summary">
-    <div class="panel-summary-main">
-      <h2>中文备份库</h2>
-      <span class="sub" id="history_summary_note">SQLite · 按 UID 保存历史版本（默认收起，点击展开）</span>
-    </div>
-  </summary>
-  <div class="panel-body">
-    <table><thead><tr><th>Mod / UID</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody id="history"></tbody></table>
-    <div id="nohistory" class="empty">翻译完成后，中文文件与原文备份会显示在这里。</div>
-  </div>
-</details>
+<section class="wide" id="history_panel" hidden aria-label="当前 Mod 翻译版本">
+  <div id="history" class="history-groups"></div>
+  <div id="nohistory" class="empty">该 Mod 暂无历史版本。</div>
+</section>
 
-<section class="card wide"><div class="row"><h2 class="grow">任务进度</h2><span id="status" class="status">待命</span></div><div id="logs" class="logs">准备就绪。先保存接口设置，再扫描本机 Mod。</div></section><footer><div id="app_build">条目浏览库 · 正在连接后台</div><div id="storage"></div></footer></main>
+<section class="card wide"><div class="row"><h2 class="grow">任务进度</h2><span id="status" class="status">待命</span></div><div id="task_list" class="task-list" aria-label="各 Mod 任务"></div><div id="logs" class="logs">准备就绪。先保存接口设置，再扫描本机 Mod。</div></section><footer><div id="app_build">条目浏览库 · 正在连接后台</div><div id="storage"></div></footer></main>
+
+<dialog id="mod_export_dialog" aria-labelledby="mod_export_title">
+  <div class="row"><h2 id="mod_export_title" class="grow">生成独立翻译 Mod</h2><button id="close_mod_export">关闭</button></div>
+  <div class="sub">仅导出当前英文匹配、校验通过的译文。未完成或格式错误的条目不写入补丁；原 Mod 保留。可在生成后下载 ZIP 或打开本机目录。</div>
+  <label for="mod_export_name">翻译 Mod 名称</label><input id="mod_export_name" maxlength="160">
+  <label for="mod_export_intro">简介（可留空自动生成）</label><textarea id="mod_export_intro" rows="5" maxlength="12000" placeholder="写下汉化内容、使用说明或署名；留空使用当前默认 API 配置生成简介"></textarea>
+  <div id="mod_export_api_note" class="sub"></div>
+  <div id="mod_export_status" class="notice" role="status" aria-live="polite">准备生成</div>
+  <div class="row"><button id="confirm_mod_export" class="primary">生成翻译 Mod</button><button id="download_mod_export" disabled>下载 Mod ZIP</button><button id="open_mod_export" disabled>打开生成目录</button></div>
+  <details style="margin-top:20px"><summary>Steam 创意工坊投稿</summary><p class="sub">上传接口暂未启用。生成后可复制 description.txt 中的简介，通过游戏启动器手动上传。</p><button disabled>上传至 Steam 创意工坊 · 尚未启用</button></details>
+</dialog>
 
 <dialog id="import_step1_dialog" aria-labelledby="import_step1_title">
   <div class="step-badge">STEP 1 / 2</div>
@@ -373,11 +417,24 @@ function applyTheme(theme){
 })();
 
 function escapeText(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function ask(message,label="确认执行"){return new Promise(resolve=>{const dialog=$('confirmation');$('confirmation_text').textContent=message;$('confirm_action').textContent=label;$('confirm_action').className=label==='开始AI翻译'?'ai-action':'primary';$('cancel_action').onclick=()=>{dialog.close();resolve(false);};$('confirm_action').onclick=()=>{dialog.close();resolve(true);};dialog.oncancel=()=>resolve(false);dialog.showModal();});}
+function ask(message,label="确认执行"){return new Promise(resolve=>{const dialog=$('confirmation');$('confirmation_text').textContent=message;$('confirm_action').textContent=label;$('confirm_action').className=label==='开始AI翻译'?'ai-action':(label.includes('清除')||label.includes('删除'))?'danger-action':'primary';$('cancel_action').onclick=()=>{dialog.close();resolve(false);};$('confirm_action').onclick=()=>{dialog.close();resolve(true);};dialog.oncancel=()=>resolve(false);dialog.showModal();});}
 function toast(message){$('toast').textContent=message;$('toast').style.display='block';}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body===undefined?'GET':'POST',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'请求失败');return data;}
 function statsText(mod){const c=mod.counts;if(!c)return '未扫描';if(c.error)return '扫描失败：'+c.error;return `${mod.scan_state==='待复查'?'待复查 · 上次结果：':''}已翻译 ${c.deployed??c.translated} · 已缓存 ${c.cached||0} · 未翻译 ${c.untranslated-(c.needs_update||0)} · 需更新 ${c.needs_update||0}${c.parse_errors?" · 格式报错 "+c.parse_errors+" 行":""}`;}
 
+function modJob(id=selected){return state?.jobs?.[id]||{running:false,kind:'',messages:[],result:null,error:null};}
+function globalBusy(){return !!state?.jobs?.__global__?.running&&state.jobs.__global__.kind!=='scan';}
+function modBusy(id=selected){return globalBusy()||!!modJob(id).running;}
+function updateControls(){
+  const busy=modBusy();
+  for(const id of ['translate','analyze','import_btn','export_btn','clear_translations','use_cache','generate_mod'])$(id).disabled=busy||!selected;
+  for(const id of ['import_cache','pick_file','pick_folder','import_next_step'])$(id).disabled=busy||pickingImport;
+  $('cache_version').disabled=busy||!$('use_cache').checked;
+  $('cache_details').hidden=!$('use_cache').checked;
+  $('scan').disabled=!!state?.jobs?.__global__?.running;
+  for(const id of ['switch_storage','storage_mode','aggregate_export'])$(id).disabled=modBusy();
+  $('confirm_mod_export').disabled=modBusy(modExportId)||!!pendingModExport;
+}
 function modSortGroup(mod){
   const c=mod.counts;
   if(!c||c.error)return 2; // 2: 未扫描
@@ -403,7 +460,7 @@ function renderMods(){
       if(ga!==gb)return ga-gb;
       return String(a.title||'').localeCompare(String(b.title||''),'zh-CN')||String(a.uid).localeCompare(String(b.uid));
     });
-  $('mods').innerHTML=mods.map(m=>`<button class="mod ${selected===m.id?'selected':''}" data-id="${escapeText(m.id)}" aria-pressed="${selected===m.id}"><strong>${escapeText(m.title)}</strong><div class="row sub"><span>UID ${escapeText(m.uid)}</span>${modStatusBadge(m)}<span class="badge info">${escapeText(m.name_source)}</span>${m.translated?'<span class="badge purple">已有备份</span>':''}</div><div class="sub">${escapeText(statsText(m))}</div></button>`).join('')||`<div class="empty">${!activeGame?'选择上方游戏分类，查看该游戏的本机模组。':query?'当前游戏中没有匹配的模组。':'该游戏暂无已扫描模组。可点击「扫描更新」。'}</div>`;
+  $('mods').innerHTML=mods.map(m=>`<button class="mod ${selected===m.id?'selected':''}" data-id="${escapeText(m.id)}" aria-pressed="${selected===m.id}"><strong>${escapeText(m.title)}</strong><div class="row sub"><span>UID ${escapeText(m.uid)}</span>${modJob(m.id).running?'<span class="badge info">任务进行中</span>':modStatusBadge(m)}<span class="badge info">${escapeText(m.name_source)}</span>${m.translated?'<span class="badge purple">已有备份</span>':''}</div><div class="sub">${escapeText(statsText(m))}</div></button>`).join('')||`<div class="empty">${!activeGame?'选择上方游戏分类，查看该游戏的本机模组。':query?'当前游戏中没有匹配的模组。':'该游戏暂无已扫描模组。可点击「扫描更新」。'}</div>`;
   $('count').textContent=`本地清单 ${state.mods.length} 个 · ${activeGame?games[activeGame]+' '+mods.length+' 个':'请选择游戏'}`;
   document.querySelectorAll('[data-id]').forEach(e=>e.onclick=()=>{selected=e.dataset.id;renderMods();renderSelection();});
   revealMods();
@@ -411,17 +468,40 @@ function renderMods(){
 function revealMods(){if(document.querySelector('.mod')&&window.gsap&&!matchMedia('(prefers-reduced-motion: reduce)').matches)gsap.fromTo('.mod',{opacity:0,y:5},{opacity:1,y:0,duration:.3,stagger:.025,overwrite:true});}
 
 function openSteam(mod){if(steamWindow&&!steamWindow.closed){try{steamWindow.location.href=mod.url;steamWindow.focus();return;}catch(e){}}steamWindow=window.open(mod.url,'WorkshopSteamPreview');if(!steamWindow)toast('浏览器阻止了 Steam 窗口，请允许本机页面打开弹出窗口。');}
-function renderSelection(){if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent='在左侧选择一个 Mod，查看路径并开始翻译。';return;}$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>总条目</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>已翻译</span></div><div><b>${mod.counts.cached||0}</b><span>已缓存</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>未翻译</span></div><div><b>${mod.counts.needs_update||0}</b><span>需更新</span></div><div><b>${mod.counts.parse_errors||0}</b><span>格式错误</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||'暂无有效译文')}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);}
-function renderHistory(){const entries=state.history;$('nohistory').hidden=!!entries.length;$('history_summary_note').textContent=`SQLite · 共 ${entries.length} 条历史版本（默认收起，点击展开）`;$('history').innerHTML=entries.map(v=>`<tr><td><strong>${escapeText(v.title)}</strong><br><span class="sub">${escapeText(v.uid)} · 版本 ${v.version_id}<br>来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${state.job.running||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button></td></tr>`).join('');document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
-async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?'已保存；留空保留':'尚未设置';initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">选择已保存的配置</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · 未保存密钥'}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';$('translation_notice').textContent='演示模式自动整合匹配缓存，只操作模拟 Mod，使用固定示例译文，不访问 Steam 或付费模型。完成后仍会实际验证本地备份和文件复制流程。';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/aggregate_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||previous.job.running!==state.job.running){renderHistory();}for(const id of ['scan','translate','save','switch_profile','switch_storage','storage_mode','open','analyze','import_btn','export_btn','import_cache','pick_file','pick_folder','import_next_step','aggregate_export','open_aggregate'])$(id).disabled=state.job.running||(pickingImport&&['pick_file','pick_folder','import_next_step','import_cache'].includes(id));$('status').textContent=state.job.running?'正在执行 · '+state.job.kind:'待命';if(state.job.messages.length)$('logs').textContent=state.job.messages.join('\n');const job=JSON.stringify(state.job);if(!state.job.running&&state.job.error&&job!==lastJob)toast(state.job.error);if(!state.job.running&&job!==lastJob&&state.job.result?.aggregate?.error)toast('原 Mod 已回写，聚合副本生成失败：'+state.job.result.aggregate.error);lastJob=job;if(window.syncEntryBrowser)window.syncEntryBrowser();}catch(e){toast('连接程序失败：'+e.message);}}
+function renderSelection(){renderHistory();renderTaskLogs();if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent='在左侧选择一个 Mod，查看路径并开始翻译。';updateControls();return;}const cache=mod.cache_selection||{enabled:true,version_id:null,versions:[]};$('use_cache').checked=cache.enabled;$('cache_version').innerHTML='<option value="">最新缓存（默认）</option>'+(cache.versions||[]).map(v=>`<option value="${v.id}">版本 ${v.id} · ${escapeText(v.created_at)} · ${escapeText(v.provider||'历史备份')}</option>`).join('');$('cache_version').value=cache.version_id??'';$('cache_version').disabled=!cache.enabled||modBusy();$('cache_details').hidden=!cache.enabled;$('cache_note').textContent=(cache.enabled?'已启用所选缓存，切换版本后自动更新条目状态。':'缓存复用已关闭：已缓存条目改为未翻译，保留本机已有中文。')+' 仅校验本机英文哈希，无法检查 Steam 尚未安装的更新。';$('translation_notice').textContent=state.demo?'演示模式：遵循缓存选项，使用固定示例译文，不访问 Steam 或付费模型。':(cache.enabled?'开始前自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目。':'缓存复用已关闭；保留本机已有中文，其余条目重新请求 AI 翻译。')+' 英文会发送到配置的模型接口，可能产生费用。完成后备份并回写；失败行保留英文。';$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>总条目</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>已翻译</span></div><div><b>${mod.counts.cached||0}</b><span>已缓存</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>未翻译</span></div><div><b>${mod.counts.needs_update||0}</b><span>需更新</span></div><div><b>${mod.counts.parse_errors||0}</b><span>格式错误</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||'暂无有效译文')}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);updateControls();}
+const expandedHistoryMods=new Set();
+function renderHistory(){const mod=state.mods.find(m=>m.id===selected);const ready=!!mod&&(state.analyzed_mod_ids||[]).includes(mod.id)&&mod.scan_state==='已扫描'&&!mod.counts?.error;$('history_panel').hidden=!ready;const entries=ready?(state.history||[]).filter(v=>v.mod_id===mod.id):[];if(!ready){$('history').innerHTML='';return;}$('nohistory').hidden=!!entries.length;$('nohistory').textContent='该 Mod 暂无历史备份；翻译完成后会自动保存在这里。';const groupsMap=new Map();for(const v of entries){if(!groupsMap.has(v.mod_id))groupsMap.set(v.mod_id,[]);groupsMap.get(v.mod_id).push(v);}const groups=Array.from(groupsMap.entries());$('history').innerHTML=groups.map(([modId,versions])=>{const latest=versions[0];const isOpen=expandedHistoryMods.has(modId);return `<details class="history-mod-group" data-history-mod="${escapeText(modId)}" ${isOpen?'open':''}><summary class="history-mod-summary"><div class="grow"><strong>${escapeText(latest.title)} · 翻译版本</strong><div class="row sub" style="margin-top:4px"><span>UID ${escapeText(latest.uid)}</span><span class="badge info">共 ${versions.length} 个版本</span><span class="badge ok">${escapeText(latest.status)}</span><span>最新备份：${escapeText(new Date(latest.created_at).toLocaleString())}</span></div></div></summary><div class="history-mod-versions"><table><thead><tr><th>翻译版本 / 来源</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${versions.map(v=>`<tr><td><strong>版本 #${v.version_id}</strong><br><span class="sub">来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button> <button class="danger-action" data-delete-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)?'disabled':''}>删除缓存</button></td></tr>`).join('')}</tbody></table></div></details>`;}).join('');document.querySelectorAll('[data-history-mod]').forEach(d=>d.ontoggle=()=>{if(d.open)expandedHistoryMods.add(d.dataset.historyMod);else expandedHistoryMods.delete(d.dataset.historyMod);});document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-delete-version]');if(!button)return;const version=state.history.find(v=>v.version_id===Number(button.dataset.deleteVersion)&&v.mod_id===button.dataset.mod);if(!version)return;if(!await ask(`删除「${version.title}」的缓存版本 #${version.version_id}？\n来源：${version.provider||'历史版本'}\n将永久删除此版本的 SQL 备份记录和仅由此版本保留的缓存映射。其他版本和本机中文文件保留。`,'确认删除缓存'))return;try{await api('delete-cache-version',{id:version.mod_id,version_id:version.version_id});await refresh();}catch(e){toast(e.message);}});
+async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?'已保存；留空保留':'尚未设置';initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">选择已保存的配置</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · 未保存密钥'}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('developer_exports').hidden=!state.config.developer_mode;$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/generated_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.analyzed_mod_ids)!==JSON.stringify(state.analyzed_mod_ids)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderHistory();}updateControls();
+const running=Object.values(state.jobs||{}).filter(j=>j.running);
+$('status').textContent=running.length?`${running.length} 个任务进行中 · 可切换其他 Mod 并行翻译`:'待命';
+$('task_list').innerHTML=Object.entries(state.jobs||{}).map(([id,j])=>`<button data-task-mod="${escapeText(id)}" ${id==='__global__'?'disabled':''}>${escapeText(state.mods.find(m=>m.id===id)?.title||'目录刷新')} · ${j.running?'执行中':j.error?'失败':'完成'}</button>`).join('');
+document.querySelectorAll('[data-task-mod]').forEach(b=>b.onclick=()=>{selected=b.dataset.taskMod;activeGame=state.mods.find(m=>m.id===selected)?.game||activeGame;renderMods();renderSelection();renderTaskLogs();});
+renderTaskLogs();
+for(const [id,j] of Object.entries(state.jobs||{})){
+  const prior=previous?.jobs?.[id];
+  if(!j.running&&prior?.running){
+    if(j.error)toast((state.mods.find(m=>m.id===id)?.title||'任务')+'：'+j.error);
+    else if(j.kind==='clear-translations')toast(`已清除 ${j.result?.cleared_files||0} 个翻译文件，并重新扫描。`);
+    else if(j.kind==='delete-cache-version')toast(`已删除缓存版本 #${j.result?.version_id} 并更新词条状态。`);
+    if(j.result?.aggregate?.error)toast('自动生成失败：'+j.result.aggregate.error);
+  }
+}
+syncModExport();if(window.syncEntryBrowser)window.syncEntryBrowser();
+}catch(e){toast('连接程序失败：'+e.message);}}
+function renderTaskLogs(){const j=modJob();$('logs').textContent=j.messages.length?j.messages.join('\n'):(state.jobs?.__global__?.messages||[]).join('\n')||'该 Mod 暂无任务日志。';}
 $('save').onclick=async()=>{try{const c={api_format:'openai',provider:$('provider').value.trim(),config_name:$('config_name').value.trim(),base_url:$('base_url').value.trim(),model:$('model').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value),steam_libraries:$('libraries').value.split('\n').map(v=>v.trim()).filter(Boolean)};if($('api_key').value.trim())c.api_key=$('api_key').value.trim();await api('config',c);$('api_key').value='';toast('配置已保存到本机 JSON');initialized=false;await refresh();}catch(e){toast(e.message);}};
 $('switch_storage').onclick=async()=>{try{await api('config-storage',{mode:$('storage_mode').value});initialized=false;await refresh();toast('配置保存位置已切换，当前配置与接口列表已复制');}catch(e){toast(e.message);}};
 $('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!name){toast('请选择已保存的配置');return;}try{await api('profile',{name});$('api_key').value='';initialized=false;await refresh();toast('已切换 API 配置：'+name);}catch(e){toast(e.message);}};
-$('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?'聚合汉化已开启：所有 Mod 回写后自动汇总。':'聚合汉化已关闭，已有汇总文件保留。');}catch(e){$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
+$('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?'开发者自动生成已开启：每个 Mod 单独生成翻译补丁。':'开发者自动生成已关闭，已有翻译 Mod 保留。');}catch(e){$('developer_exports').hidden=!state.config.developer_mode;$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
 $('open_aggregate').onclick=async()=>{try{await api('open-aggregate',{});}catch(e){toast(e.message);}};
 $('scan').onclick=async()=>{try{await api('scan',{});await refresh();}catch(e){toast(e.message);}};
-$('translate').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(state.demo?`演示翻译「${mod.title}」？\n自动整合匹配缓存，使用固定示例译文，不访问任何外部接口。`:`开始AI翻译「${mod.title}」？\n自动整合已有中文和匹配缓存，只翻译缺失或原文变化的条目。\n英文文本会发往 ${state.config.base_url}，可能产生费用。\n完成后备份并回写（报错行保留英文）：${mod.path}`,'开始AI翻译'))return;try{await api('translate',{id:selected});await refresh();}catch(e){toast(e.message);}};
+$('translate').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(state.demo?`演示翻译「${mod.title}」？\n${mod.cache_selection?.enabled===false?'缓存复用已关闭，其余条目重新生成。':'自动整合所选匹配缓存。'}使用固定示例译文，不访问任何外部接口。`:`开始AI翻译「${mod.title}」？\n${mod.cache_selection?.enabled===false?'缓存复用已关闭；保留本机已有中文，其余条目重新翻译。':'自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目。'}\n英文文本会发往 ${state.config.base_url}，可能产生费用。\n完成后备份并回写（报错行保留英文）：${mod.path}`,'开始AI翻译'))return;try{await api('translate',{id:selected});await refresh();}catch(e){toast(e.message);}};
 $('analyze').onclick=async()=>{try{await api('analyze',{id:selected});await refresh();}catch(e){toast(e.message);}};
+async function changeCache(){if(!selected)return;try{await api('cache-selection',{id:selected,enabled:$('use_cache').checked,version_id:$('cache_version').value?Number($('cache_version').value):null});await refresh();}catch(e){toast(e.message);renderSelection();}}
+$('use_cache').onchange=()=>{$('cache_details').hidden=!$('use_cache').checked;changeCache();};
+$('cache_version').onchange=changeCache;
+$('clear_translations').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(`清除「${mod.title}」本机目录中的中文翻译文件？\n${mod.path}\n清除前会自动备份现有中文文件，清除后自动重新扫描该 Mod（SQLite 翻译缓存仍保留）。`,'确认清除'))return;try{await api('clear-translations',{id:selected});await refresh();}catch(e){toast(e.message);}};
 
 function openImportStep1(){
   if(!selected)return;
@@ -462,7 +542,7 @@ async function pick(kind){
     $('picker_status').textContent=e.message;
   }finally{
     pickingImport=false;
-    for(const id of ['pick_file','pick_folder','import_next_step','import_cache'])$(id).disabled=!!state?.job.running;
+    for(const id of ['pick_file','pick_folder','import_next_step','import_cache'])$(id).disabled=modBusy();
   }
 }
 $('pick_file').onclick=()=>pick('file');
@@ -479,6 +559,42 @@ $('import_cache').onclick=async()=>{
     await refresh();
     toast(`导入任务已启动（来源：${provider||'自动命名'}）。带哈希缓存仅校验本机英文；无哈希中文文件请确认来源版本。`);
   }catch(e){toast(e.message);}
+};
+
+let modExportId=null, pendingModExport=null, generatedModId=null;
+function syncModExport(){
+  const job=modJob(pendingModExport);if(!pendingModExport||job.kind!=='generate-mod')return;
+  if(job.running){$('mod_export_status').textContent='正在扫描译文并生成翻译 Mod…';return;}
+  const id=pendingModExport;pendingModExport=null;
+  if(job.error){$('mod_export_status').textContent=job.error;return;}
+  const result=job.result;if(!result)return;
+  generatedModId=id;$('mod_export_intro').value=result.description;
+  $('mod_export_status').textContent=`已生成 ${result.entries} 条译文（自动生成编号：${result.generated_uid||''}）。简介来源：${result.description_source}\n${result.path}`+(result.warnings.length?'\n'+result.warnings.join('\n'):'');
+  $('download_mod_export').disabled=false;$('open_mod_export').disabled=false;
+}
+$('generate_mod').onclick=()=>{
+  const mod=state.mods.find(m=>m.id===selected);if(!mod)return;
+  if(modExportId!==selected){$('mod_export_intro').value='';$('mod_export_name').value=mod.title.slice(0,140)+' · 简体中文翻译';}
+  modExportId=selected;generatedModId=null;
+  $('mod_export_status').textContent='将根据现有中文与哈希缓存生成独立补丁，不调用 AI 翻译正文。';
+  $('download_mod_export').disabled=true;$('open_mod_export').disabled=true;
+  $('mod_export_api_note').textContent=state.demo?'演示模式：简介使用固定模板，不调用付费接口。':`简介留空时使用当前默认配置：${state.config.provider||'默认提供商'} / ${state.config.model}。仅发送游戏、Mod 名称、链接和条目数量，可能产生费用。填写简介则不请求 API。`;
+  $('mod_export_dialog').showModal();
+};
+$('close_mod_export').onclick=()=>$('mod_export_dialog').close();
+$('confirm_mod_export').onclick=async()=>{
+  if(modBusy(modExportId)||pendingModExport)return;
+  pendingModExport=modExportId;$('confirm_mod_export').disabled=true;
+  $('download_mod_export').disabled=true;$('open_mod_export').disabled=true;
+  try{await api('generate-mod',{id:modExportId,title:$('mod_export_name').value,introduction:$('mod_export_intro').value});await refresh();}
+  catch(e){pendingModExport=null;$('mod_export_status').textContent=e.message;$('confirm_mod_export').disabled=false;}
+};
+$('open_mod_export').onclick=async()=>{try{await api('open-generated-mod',{id:generatedModId});}catch(e){$('mod_export_status').textContent=e.message;}};
+$('download_mod_export').onclick=async()=>{
+  try{const r=await fetch('/api/download-mod',{method:'POST',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:JSON.stringify({id:generatedModId})});
+    if(!r.ok)throw Error((await r.json()).error||'下载失败');
+    const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='translation-mod-'+generatedModId.replace(':','-')+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){$('mod_export_status').textContent=e.message;}
 };
 
 $('export_btn').onclick=async()=>{

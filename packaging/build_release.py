@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 def sanitized(value):
     if isinstance(value, dict):
-        return {key: '' if key == 'api_key' else sanitized(item) for key, item in value.items()}
+        return {key: '' if key == 'api_key' else False if key == 'developer_mode' else sanitized(item) for key, item in value.items()}
     if isinstance(value, list):
         return [sanitized(item) for item in value]
     return value
@@ -48,7 +48,7 @@ def build_release(destination=None, data_dir=None, executable=None):
                 completed['entries'] = [dict(row) for row in connection.execute('SELECT * FROM translation_entries')]
         finally:
             connection.close()
-    files = ['workshop_app.py', 'paradox.py', 'request.py', 'translation_cache.py', 'entry_browser.py', 'entry_browser_ui.js', 'aggregate_export.py',
+    files = ['workshop_app.py', 'paradox.py', 'request.py', 'translation_cache.py', 'entry_browser.py', 'entry_browser_ui.js', 'aggregate_export.py', 'mod_export.py',
              'workshop_ui.html', 'rules.json', 'requirements.txt', 'Windows使用说明.md', 'README.md', '性能与改进建议.md']
     files += [str(p.relative_to(ROOT)) for folder in ('vendor', 'assets', 'packaging')
               for p in (ROOT / folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts]

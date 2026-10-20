@@ -60,7 +60,7 @@ class EntryBrowser:
             raise ValueError('分页参数无效')
         join = '''FROM browsable_entries e LEFT JOIN entry_reviews r
                   ON e.mod_id=r.mod_id AND e.entry_id=r.entry_id WHERE e.mod_id=?'''
-        effective = 'COALESCE(r.status,e.auto_status)'
+        effective = "CASE WHEN e.auto_status='format_error' THEN e.auto_status ELSE COALESCE(r.status,e.auto_status) END"
         where = ''
         arguments = [identifier]
         if status != 'all':

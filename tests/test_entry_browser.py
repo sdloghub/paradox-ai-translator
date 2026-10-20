@@ -43,7 +43,7 @@ class EntryBrowserTests(unittest.TestCase):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('l_simp_chinese:\n deployed:0 "阿尔法 $VALUE$"\n', encoding='utf-8')
         result = self.scan()
-        self.assertEqual(result['counts'], {'translated':1, 'cached':1, 'untranslated':3, 'needs_update':1, 'format_error':1})
+        self.assertEqual(result['counts'], {'translated':1, 'cached':1, 'untranslated':1, 'needs_update':1, 'format_error':3})
         self.assertEqual(self.row('deployed')['chinese'], '阿尔法 $VALUE$')
         self.assertEqual(self.row('cached')['origin'], '测试来源')
         self.assertEqual(self.row('stale')['historical'], 1)
@@ -65,7 +65,7 @@ class EntryBrowserTests(unittest.TestCase):
         self.assertEqual(self.row('pending')['manual_status'], 'translated')
         with self.service.connect() as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM translation_entries').fetchone()[0], 0)
-        self.assertEqual(self.item['counts']['deployed'], 0)
+        self.assertEqual(self.item['counts']['deployed'], 1)
 
     def test_changed_english_invalidates_mark_but_shifted_lines_do_not(self):
         self.scan()
@@ -87,7 +87,7 @@ class EntryBrowserTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertNotEqual(rows[0]['entry_id'], rows[1]['entry_id'])
         self.browser.mark(self.identifier, rows[0]['entry_id'], 'format_error')
-        self.assertEqual(self.browser.list(self.identifier, 'format_error')['total'], 2)
+        self.assertEqual(self.browser.list(self.identifier, 'format_error')['total'], 3)
         with self.assertRaises(ValueError):
             self.browser.mark('another-mod', rows[0]['entry_id'], 'cached')
 
@@ -121,6 +121,10 @@ class EntryBrowserTests(unittest.TestCase):
         self.service.restore(result['version_id'], self.identifier)
         self.assertEqual(self.browser.list(self.identifier, 'cached')['total'], 0)
         self.assertEqual(self.browser.list(self.identifier, 'translated')['total'], 4)
+        cleared = self.service.clear_translations(self.identifier)
+        self.assertEqual(cleared['cleared_files'], 1)
+        self.assertEqual(self.item['counts']['deployed'], 0)
+        self.assertEqual(self.item['counts']['cached'], 4)
 
     def test_edit_fixes_error_rescans_and_backs_up_full_original(self):
         self.scan()
@@ -128,7 +132,7 @@ class EntryBrowserTests(unittest.TestCase):
         before = self.source.read_bytes()
         result = self.service.edit_entry(self.identifier, row['entry_id'], ' malformed:0 "Fixed"')
         self.assertFalse(result['parse_error'])
-        self.assertEqual(result['counts']['parse_errors'], 0)
+        self.assertEqual(result['counts']['parse_errors'], 2)
         self.assertEqual(Path(result['backup_path']).read_bytes(), before)
         self.assertEqual(self.source.read_bytes(), before.replace(b' malformed:0 "Bad" broken', b' malformed:0 "Fixed"'))
         self.assertEqual(self.row('malformed')['english'], 'Fixed')
@@ -139,7 +143,7 @@ class EntryBrowserTests(unittest.TestCase):
         row = self.row('malformed')
         result = self.service.edit_entry(self.identifier, row['entry_id'], ' malformed:0 Missing quotes')
         self.assertTrue(result['parse_error'])
-        self.assertEqual(result['counts']['parse_errors'], 1)
+        self.assertEqual(result['counts']['parse_errors'], 3)
         self.assertEqual(self.row('malformed')['line'], 6)
         self.assertEqual(self.row('malformed')['original_line'], ' malformed:0 Missing quotes')
 

@@ -150,6 +150,19 @@ def special_unescape(s, to_utf8, new_version):
 
 ROOT = Path(__file__).resolve().parent
 
+def cache_key(key, text):
+    """Keep different source texts under a repeated localisation key independent."""
+    import hashlib
+    return key + '\x1f' + hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+def cached_entry(cache, key, text):
+    return cache.get(cache_key(key, text), cache.get(key))
+
+def store_cached_entry(cache, key, text, translated):
+    import hashlib
+    cache[cache_key(key, text)] = {'key': key,
+        'source_hash': hashlib.sha256(text.encode('utf-8')).hexdigest(), 'text': request.output_text(translated)}
+
 class LocalisationError(ValueError):
     """A local file diagnostic safe to show without provider response bodies."""
 
@@ -212,7 +225,7 @@ def atomic_write(path, text):
         if temporary is not None:
             temporary.unlink(missing_ok=True)
 
-def outputs(local_path, dic, mde, output_root=None, project_root=None):
+def outputs(local_path, dic, mde, output_root=None, project_root=None, duplicate_keys=()):
     project_root = Path(project_root) if project_root is not None else ROOT
     src = project_root / 'localisation' / local_path
     dst = (Path(output_root) if output_root is not None else project_root / 'chn') / output_name(local_path, mde)
@@ -221,8 +234,12 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None):
     with src.open(encoding='utf-8', newline='') as source:
         for line in source:
             match = parse_line(line)
-            if match and match['prefix'].lstrip() in dic and dic[match['prefix'].lstrip()].vis:
-                text = dic[match['prefix'].lstrip()].word.replace('\n', r'\n')
+            item = (dic.get((match['prefix'].lstrip(), source_text(match, mde)),
+                            dic.get(match['prefix'].lstrip())) if match else None)
+            if match and match['prefix'].split(':', 1)[0].strip() in duplicate_keys:
+                item = None
+            if item and item.vis:
+                text = item.word.replace('\n', r'\n')
                 if mde == 'eu4':
                     text = special_escape(text, True, True)
                 # Escape unescaped quotes; existing game escapes remain intact.
@@ -233,20 +250,32 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None):
             lines.append(line)
     atomic_write(dst, ''.join(lines))
 
-def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None):
+def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None, duplicate_keys=()):
     import hashlib
     import json
     import logging
     project_root = Path(project_root) if project_root is not None else ROOT
     translator = translator or request.request_deepseek_batch
     entries = extract(project_root / 'localisation' / local_path, mde, issues=issues)
+    if duplicate_keys:
+        from translation_cache import entries as parsed_entries, duplicate_issues
+        path = project_root / 'localisation' / local_path
+        rows = parsed_entries({str(local_path): path.read_bytes()}, mde, strict=False)
+        # Includes keys duplicated in other files; the scan lists all locations.
+        if issues is not None:
+            for row in rows:
+                if row['key'].split(':', 1)[0].strip() in duplicate_keys:
+                    issues.append({'file': str(local_path), 'line': row['line'], 'original_line': row['original_line'],
+                                   'reason': '重复键值「' + row['key'].split(':', 1)[0].strip() + '」；已保留英文，请修改键值后重新扫描'})
+        entries = [(key, text) for key, text in entries if key.split(':', 1)[0].strip() not in duplicate_keys]
     source_lines = {}
     if issues is not None:
         with (project_root / 'localisation' / local_path).open(encoding='utf-8-sig') as stream:
             for number, line in enumerate(stream, 1):
                 match = parse_line(line)
                 if match:
-                    source_lines.setdefault(match['prefix'].lstrip(), []).append((number, line.rstrip('\r\n')))
+                    identity = (match['prefix'].lstrip(), source_text(match, mde))
+                    source_lines.setdefault(identity, []).append((number, line.rstrip('\r\n')))
     cache_path = project_root / 'already' / (str(local_path) + '.cache.json')
     try:
         cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
@@ -255,17 +284,16 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
     except (ValueError, OSError):
         logging.warning('缓存损坏，重新翻译：%s', cache_path)
         cache = {}
-    tran, pending, hashes = {}, [], {}
+    tran, pending = {}, []
     for key, text in entries:
         digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
-        hashes[key] = digest
-        cached = cache.get(key)
+        cached = cached_entry(cache, key, text)
         valid = isinstance(cached, dict) and cached.get('source_hash') == digest and isinstance(cached.get('text'), str) and request.valid_translation(text, cached['text'])
         blank = not text.strip()
         token_only = not blank and request.is_token_only(text)
         if token_only and not valid:
-            cache[key] = {'source_hash': digest, 'text': text}
-        tran[key] = Paradox_data(key, text if (blank or token_only) else cached['text'] if valid else text, int(blank or token_only or valid))
+            store_cached_entry(cache, key, text, text)
+        tran[(key, text)] = Paradox_data(key, request.output_text(cached['text']) if valid else text, int(blank or token_only or valid))
     for key, item in tran.items():
         if not item.vis:
             pending.append(key)
@@ -283,15 +311,16 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
             results = [{'success': False, 'text': tran[key].word} for key in keys]
         for key, result in zip(keys, results):
             if result['success'] and request.valid_translation(tran[key].word, result['text']):
-                tran[key].word, tran[key].vis = result['text'], 1
-                cache[key] = {'source_hash': hashes[key], 'text': result['text']}
+                tran[key].word, tran[key].vis = request.output_text(result['text']), 1
+                store_cached_entry(cache, key[0], key[1], result['text'])
                 successful += 1
             else:
                 failures += 1
                 if issues is not None:
                     for number, original_line in source_lines[key]:
-                        issues.append({'file': str(local_path), 'line': number, 'original_line': original_line, 'reason': '翻译失败或返回格式异常；已保留英文'})
+                        detail = result.get('error') or '变量或格式代码校验失败'
+                        issues.append({'file': str(local_path), 'line': number, 'original_line': original_line, 'reason': '翻译失败或返回格式异常；已保留英文：' + detail})
         # Save each completed segment independently of final publication.
         atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
-    outputs(local_path, tran, mde, output_root, project_root)
+    outputs(local_path, tran, mde, output_root, project_root, duplicate_keys)
     return failures

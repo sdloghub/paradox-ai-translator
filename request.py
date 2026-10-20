@@ -45,7 +45,44 @@ def findrule(game):
     return _RULES_CACHE[game]
 #print(findrule("st"))
 # Match script variables, game icons, colour/format tokens and literal escapes.
-TOKENS = re.compile(r'\$[^$\r\n]*\$|\[[^\]\r\n]*\]|£[^£\s]+£?|@[A-Za-z0-9_]+!?|§.|\#(?:[A-Za-z][A-Za-z0-9_]*|!)|\\(?:[nrt"\\])')
+TOKENS = re.compile(r'\$[^$\r\n]*\$|\[[^\]\r\n]*\]|£[^£\s]+£?|@[A-Za-z0-9_]+!?|§(?:[^\r\n]|$)|\#(?:[A-Za-z][A-Za-z0-9_]*|!)|\\+(?:[nrt"]|\\)')
+
+def output_text(text):
+    """The exact value the YML parser will read after publication."""
+    text = text.replace('\n', r'\n')
+    return re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', text)
+
+def protect_tokens(text):
+    """Protect even malformed source markers; the model must not repair them."""
+    import secrets
+    prefix = 'WT' + secrets.token_hex(8) + '_'
+    tokens = {}
+    def mask(match):
+        placeholder = '⟦' + prefix + str(len(tokens)) + '⟧'
+        tokens[placeholder] = match.group()
+        return placeholder
+    return TOKENS.sub(mask, text), tokens
+
+class ProtectedTokenError(ValueError):
+    pass
+
+def restore_tokens(text, tokens):
+    placeholders = re.findall(r'⟦WT[a-f0-9]+_\d+⟧', text)
+    if Counter(placeholders) != Counter(tokens.keys()):
+        raise ProtectedTokenError('受保护的变量占位符缺失、重复或被修改')
+    for placeholder, original in tokens.items():
+        text = text.replace(placeholder, original)
+    return text
+
+def validation_error(original, translated):
+    if not is_token_only(original) and not re.search(r'[\u3400-\u9fff]', translated):
+        return '未返回中文译文，不能将英文回复作为完成缓存'
+    before, after = Counter(TOKENS.findall(original)), Counter(TOKENS.findall(output_text(translated)))
+    details = []
+    for label, tokens in (('缺少', before - after), ('新增', after - before)):
+        if tokens:
+            details.append(label + '格式标记 ' + repr(list(tokens.elements())[:8]))
+    return '；'.join(details) or '返回空文本、分隔符或不支持的换行'
 
 def is_token_only(text):
     """若文本为空白，或剔除全部游戏标识符后不再包含任何英文字母，则视为仅剩标识符/已翻译。"""
@@ -58,7 +95,8 @@ def valid_translation(original, translated):
         return translated == original
     return (bool(translated.strip())
             and "---SEPARATOR---" not in translated
-            and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(translated)))
+            and (is_token_only(original) or bool(re.search(r'[\u3400-\u9fff]', translated)))
+            and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(output_text(translated))))
 
 def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40, config=None, progress=None):
     """返回与输入顺序一致的 {text, success, error}；失败项保留原文。"""
@@ -90,13 +128,15 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
     def failed(original, error):
         return {"text": original, "success": False, "error": error}
 
-    def translate_text(text):
+    def translate_text(text, protected=False):
         # SDK 重试关闭，由这里控制：首次请求加最多三次临时错误重试。
         for attempt in range(4):
             try:
                 response = client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "system", "content": rule},
+                    messages=[{"role": "system", "content": rule + (
+                        '\n本条中的 ⟦WT…⟧ 是程序保护的游戏标记。必须逐字保留每个占位符各一次，'
+                        '不要翻译、删除、复制或修复它们。仅翻译其余正文，仅返回译文。' if protected else '')},
                               {"role": "user", "content": text}],
                 )
                 content = response.choices[0].message.content
@@ -118,18 +158,27 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
             return [failed(text, type(error).__name__) for text in batch]
         parts = content.split(separator)
         if len(parts) == len(batch) and all(valid_translation(original, part.strip()) for part, original in zip(parts, batch)):
-            return [{"text": part.strip(), "success": True, "error": None} for part in parts]
+            return [{"text": output_text(part.strip()), "success": True, "error": None} for part in parts]
         logging.warning("批次分隔符数量或内容不正确，改为逐条翻译")
         results = []
         for original in batch:
             try:
                 for validation_attempt in range(3):
-                    text = translate_text(original).strip()
+                    if validation_attempt:
+                        masked, tokens = protect_tokens(original)
+                        try:
+                            text = restore_tokens(translate_text(masked, protected=True).strip(), tokens)
+                        except ProtectedTokenError:
+                            text = ''
+                            continue
+                    else:
+                        text = translate_text(original).strip()
                     if valid_translation(original, text):
                         break
                 else:
-                    raise ValueError("变量或格式代码校验失败")
-                results.append({"text": text, "success": True, "error": None})
+                    results.append(failed(original, validation_error(original, text)))
+                    continue
+                results.append({"text": output_text(text), "success": True, "error": None})
             except Exception as error:
                 logging.warning("逐条翻译失败，保留原文且不缓存 (%s)", type(error).__name__)
                 results.append(failed(original, type(error).__name__))

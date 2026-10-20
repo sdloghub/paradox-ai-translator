@@ -11,7 +11,7 @@
 
   function render() {
     const data = view.data;
-    const busy = !!state?.job.running || view.saving;
+    const busy = modBusy(view.id) || view.saving;
     $('entry_loading').textContent = view.loading ? '正在读取索引…' : '';
     $('entry_scan').disabled = !view.id || busy || view.loading;
     $('entry_refresh').disabled = !view.id || view.loading;
@@ -33,7 +33,8 @@
     $('entry_empty').textContent = !view.id ? '选择 Mod 后查看键名、英文、中文和状态。' : !data?.ready ? '扫描后可查看键值和中英文对照。' : '当前筛选下没有条目。';
     $('entry_rows').innerHTML = (data?.entries || []).map(row => `
       <tr>
-        <td><strong class="entry-key">${escapeText(row.entry_key)}</strong><div class="path">${escapeText(row.source_file)}<br>第 ${row.line} 行</div>
+        <td><strong class="entry-key">${escapeText(row.entry_key)}</strong>
+          <details class="entry-editor"><summary>修改键值</summary><label for="key-${row.entry_id}">键名（不含冒号及版本号）</label><input id="key-${row.entry_id}" data-key-edit="${row.entry_id}" value="${escapeText(row.entry_key)}" ${busy?'disabled':''}><button data-key-save="${row.entry_id}" ${busy?'disabled':''}>保存键值并重新扫描</button><div class="sub">只改当前行键名；原文件会先备份。游戏脚本中的引用需相应调整。</div></details><div class="path">${escapeText(row.source_file)}<br>第 ${row.line} 行</div>
           <details class="entry-original"><summary>查看原文件行</summary><pre>${escapeText(row.original_line)}</pre></details></td>
         <td><div class="entry-text" lang="en">${escapeText(row.english)}</div>${row.reason ? `<div class="entry-error">${escapeText(row.reason)}</div>` : ''}
           <details class="entry-editor" ${drafts.has(draftKey(row.entry_id)) ? 'open' : ''}>
@@ -41,14 +42,14 @@
             <label for="edit-${row.entry_id}">原始 YML 行（含键名和引号）</label>
             <textarea id="edit-${row.entry_id}" data-entry-edit="${row.entry_id}" rows="4" spellcheck="false" ${busy || view.loading ? 'disabled' : ''}>${escapeText(drafts.get(draftKey(row.entry_id)) ?? row.original_line)}</textarea>
             <div class="row"><button class="primary" data-entry-save="${row.entry_id}" ${busy || view.loading ? 'disabled' : ''}>保存并重新扫描</button><button data-entry-reset="${row.entry_id}" ${busy || view.loading ? 'disabled' : ''}>撤销输入</button></div>
-            <div class="sub">保存前备份原文件，随后自动复查，不调用 AI。</div>
+            <div class="sub">保存前备份原文件，随后自动复查，不调用 AI 翻译正文。</div>
           </details></td>
         <td><div class="entry-text">${escapeText(row.chinese || '暂无中文')}</div>${row.historical ? '<div class="entry-error">历史译文：英文已变化，尚未验证适用性。</div>' : ''}<div class="sub">${escapeText(row.origin || '')}</div>
           ${['translated','cached'].includes(row.auto_status) && !row.historical ? `<details class="entry-editor" ${chineseDrafts.has(draftKey(row.entry_id)) ? 'open' : ''}>
             <summary>修改中文译文</summary><label for="chinese-${row.entry_id}">中文译文（保留变量与格式标记）</label>
             <textarea id="chinese-${row.entry_id}" data-chinese-edit="${row.entry_id}" rows="4" spellcheck="false" ${busy || view.loading ? 'disabled' : ''}>${escapeText(chineseDrafts.get(draftKey(row.entry_id)) ?? row.chinese)}</textarea>
             <div class="row"><button class="primary" data-chinese-save="${row.entry_id}" ${busy || view.loading ? 'disabled' : ''}>${row.auto_status === 'translated' ? '保存并回写中文' : '保存中文缓存'}</button><button data-chinese-reset="${row.entry_id}" ${busy || view.loading ? 'disabled' : ''}>撤销输入</button></div>
-            <div class="sub">${row.auto_status === 'translated' ? '保留修订记录，备份后同步原 Mod 与已开启的聚合目录。' : '只更新匹配当前英文的缓存，下次翻译自动复用。'}不调用 AI。</div>
+            <div class="sub">${row.auto_status === 'translated' ? '保留修订记录，备份后同步原 Mod；开发者模式下同步独立翻译 Mod。' : '只更新匹配当前英文的缓存，下次翻译自动复用。'}不调用 AI 翻译正文。</div>
           </details>` : ''}</td>
         <td><span class="entry-badge ${row.status}">${labels[row.status]}</span><div class="sub">自动：${labels[row.auto_status]}</div>
           <label class="entry-status-label" for="mark-${row.entry_id}">手动标注</label>
@@ -57,12 +58,22 @@
             ${Object.entries(labels).map(([value,label])=>`<option value="${value}" ${row.manual_status === value ? 'selected' : ''}>${label}</option>`).join('')}
           </select></td>
       </tr>`).join('');
+    document.querySelectorAll('[data-key-save]').forEach(button=>button.onclick=async()=>{
+      if(modBusy(view.id)||view.saving)return;
+      const modId=view.id,id=button.dataset.keySave,key=$('key-'+id).value;
+      view.saving=true;render();
+      try{await api('entry-key',{id:modId,entry_id:id,key});pendingEdit={id:modId,entry_id:id};await refresh();}
+      catch(error){toast(error.message);}
+      finally{view.saving=false;render();}
+    });
     document.querySelectorAll('[data-entry-mark]').forEach(select => select.onchange = async () => {
       select.disabled = true;
       try {
         await api('entry-status', {id:view.id, entry_id:select.dataset.entryMark, status:select.value || null});
+        await refresh();
+        if (typeof renderMods === 'function') { renderMods(); renderSelection(); }
         await load();
-        toast('条目状态已保存；选择“跟随自动检测”可取消人工标注。');
+        toast('条目状态已保存并重新扫描更新目录状态；选择“跟随自动检测”可取消人工标注。');
       } catch (error) { toast(error.message); render(); }
     });
     document.querySelectorAll('[data-chinese-edit]').forEach(input => input.oninput = () => chineseDrafts.set(draftKey(input.dataset.chineseEdit), input.value));
@@ -72,7 +83,7 @@
       $('chinese-' + id).value = view.data.entries.find(row => row.entry_id === id).chinese;
     });
     document.querySelectorAll('[data-chinese-save]').forEach(button => button.onclick = async () => {
-      if (state.job.running || view.saving) return;
+      if (modBusy(view.id) || view.saving) return;
       const id = button.dataset.chineseSave, modId = view.id;
       const row = view.data.entries.find(row => row.entry_id === id);
       const text = $('chinese-' + id).value;
@@ -91,7 +102,7 @@
       $('edit-' + id).value = view.data.entries.find(row => row.entry_id === id).original_line;
     });
     document.querySelectorAll('[data-entry-save]').forEach(button => button.onclick = async () => {
-      if (state.job.running || view.saving) return;
+      if (modBusy(view.id) || view.saving) return;
       const id = button.dataset.entrySave;
       const text = $('edit-' + id).value;
       const modId = view.id;
@@ -147,7 +158,13 @@
     if (panel && panel.tagName === 'DETAILS') panel.open = false;
     $('selection').scrollIntoView({behavior:'smooth', block:'center'});
   };
-  $('entry_refresh').onclick = load;
+  $('entry_refresh').onclick = async () => {
+    if (!view.id) return;
+    if (!modBusy(view.id)) {
+      try { await api('analyze', {id:view.id}); await refresh(); } catch (error) { toast(error.message); }
+    }
+    await load();
+  };
   $('entry_prev').onclick = () => { --view.page; load(); };
   $('entry_next').onclick = () => { ++view.page; load(); };
   $('entry_query').oninput = () => {
@@ -161,10 +178,11 @@
   };
   window.syncEntryBrowser = () => {
     if (!state) return;
-    if (pendingEdit && state.job.kind === 'edit-entry' && !state.job.running) {
-      const finished = pendingEdit; pendingEdit = null;
-      if (!state.job.error && state.job.result) {
-        const result = state.job.result;
+    let shouldReload = false;
+    if (pendingEdit && modJob(pendingEdit.id).kind === 'edit-entry' && !modJob(pendingEdit.id).running) {
+      const finished = pendingEdit; const job=modJob(finished.id); pendingEdit = null;
+      if (!job.error && job.result) {
+        const result = job.result;
         drafts.delete(draftKey(finished.entry_id, finished.id));
         const message = `${result.file} · 第 ${result.line} 行：${result.parse_error ? '已保存，复查仍有格式错误' : '已保存，复查未发现格式错误'}。当前 Mod 格式错误 ${result.counts.parse_errors} 行。`;
         if (finished.id === view.id) {
@@ -173,20 +191,24 @@
           $('entry_edit_result').hidden = false;
         }
         toast(message);
+        if (typeof renderMods === 'function') { renderMods(); renderSelection(); }
+        shouldReload = true;
       }
     }
-    if (pendingTranslation && state.job.kind === 'edit-translation' && !state.job.running) {
-      const finished = pendingTranslation; pendingTranslation = null;
-      if (!state.job.error && state.job.result) {
-        const result = state.job.result;
+    if (pendingTranslation && modJob(pendingTranslation.id).kind === 'edit-translation' && !modJob(pendingTranslation.id).running) {
+      const finished = pendingTranslation; const job=modJob(finished.id); pendingTranslation = null;
+      if (!job.error && job.result) {
+        const result = job.result;
         chineseDrafts.delete(draftKey(finished.entry_id, finished.id));
-        const message = result.saved === false ? '中文未变化，无需保存。' : result.deployed ? '中文已保存并回写原 Mod，旧文件已备份；聚合副本按开关设置同步。' : '中文缓存已保存，下次翻译自动复用；尚未回写 Mod。';
+        const message = result.saved === false ? '中文未变化，已重新扫描并同步目录状态。' : result.deployed ? '中文已保存并回写原 Mod，旧文件已备份并重新扫描更新目录状态；开发者翻译 Mod 按开关设置同步。' : '中文缓存已保存并重新扫描更新目录状态，下次翻译自动复用；尚未回写 Mod。';
         if (finished.id === view.id) {
           $('entry_edit_result').textContent = message;
           $('entry_edit_result').dataset.error = 'false';
           $('entry_edit_result').hidden = false;
         }
         toast(message);
+        if (typeof renderMods === 'function') { renderMods(); renderSelection(); }
+        shouldReload = true;
       }
     }
     const selectedMod = state.mods.find(mod => mod.id === selected);
@@ -194,10 +216,10 @@
     if (!view.id) return;
     const mod = state.mods.find(mod => mod.id === view.id);
     if (selected !== view.id || !mod) { clear(); return; }
-    if (!view.loading && !state.job.running && mod.counts?.entry_revision && mod.counts.entry_revision !== view.data?.revision) load();
+    if (shouldReload || (!view.loading && !modBusy(view.id) && mod.counts?.entry_revision && mod.counts.entry_revision !== view.data?.revision)) load();
     else {
-      $('entry_scan').disabled = !!state.job.running || view.loading;
-      document.querySelectorAll('[data-entry-mark], [data-entry-edit], [data-entry-save], [data-entry-reset], [data-chinese-edit], [data-chinese-save], [data-chinese-reset]').forEach(control => control.disabled = !!state.job.running || view.loading || view.saving);
+      $('entry_scan').disabled = !!modBusy(view.id) || view.loading;
+      document.querySelectorAll('[data-key-edit], [data-key-save], [data-entry-mark], [data-entry-edit], [data-entry-save], [data-entry-reset], [data-chinese-edit], [data-chinese-save], [data-chinese-reset]').forEach(control => control.disabled = !!modBusy(view.id) || view.loading || view.saving);
     }
   };
   render();

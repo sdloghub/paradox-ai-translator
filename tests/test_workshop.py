@@ -240,7 +240,7 @@ class WorkshopTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.switch_profile('missing')
         self.service.job['running'] = True
-        with self.assertRaisesRegex(ValueError, '等待任务'):
+        with self.assertRaisesRegex(ValueError, '未找到'):
             self.service.switch_profile('missing')
         self.assertEqual(self.service.config(), previous)
 
@@ -659,7 +659,8 @@ class WorkshopTests(unittest.TestCase):
         external.write_text('l_simp_chinese:\n key:0 "甲 $VALUE$"\n', encoding='utf-8')
         result = self.service.import_cache(item['id'], external)
         self.assertEqual(result['imported'], 0)
-        self.assertEqual(result['untranslated'], 2)
+        self.assertEqual(result['untranslated'], 0)
+        self.assertEqual(result['parse_errors'], 2)
 
     def test_export_package_includes_chinese_yml_and_hash_cache_and_roundtrips(self):
         self.chinese_file()
@@ -695,7 +696,8 @@ class WorkshopTests(unittest.TestCase):
         for theme in ('data-theme="light"', 'data-theme="dark"', 'data-theme="hc-light"', 'data-theme="hc-dark"'):
             self.assertIn(theme, html)
         self.assertIn('<details class="card wide collapsible-panel entry-browser" id="entry_browser"', html)
-        self.assertIn('<details class="card wide collapsible-panel" id="history_panel">', html)
+        self.assertIn('<section class="wide" id="history_panel" hidden', html)
+        self.assertNotIn('<h2>中文备份库</h2>', html)
         self.assertNotIn("row.auto_status === 'format_error' ||", js)
         self.assertIn('id="import_btn"', html)
         self.assertIn('id="export_btn"', html)

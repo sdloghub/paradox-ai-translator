@@ -68,7 +68,7 @@ API 设置填写提供商名称，配置保存在本机 config.json 与 provider
 
 运行 `python packaging/build_release.py --data-dir app_data` 会复制指定数据目录的最新配置与完成记录，更新已有发布 ZIP。首次运行读取包内配置；已有本机保存时保留现有配置，完成标记按英文哈希合并。Windows 数据仍保存于 %LOCALAPPDATA%/WorkshopTranslator/app_data/。完整历史备份以本机数据库为准，JSON 完成标记用于恢复缓存。
 
-GitHub 构建只使用空配置模板，不上传本机密钥、Mod、数据库或完成记录。Steam 投稿仅预留界面和本机接口，显示「尚未启用」，不会上传内容。
+GitHub 构建只使用空配置模板，不上传本机密钥、Mod、数据库或完成记录。选中 Mod 后可一键生成独立翻译 Mod；简介留空使用默认 API。生成窗口内的 Steam 投稿入口暂未启用。发布包默认关闭开发者自动生成功能。
 
 ### 保存与切换 API 配置
 

@@ -56,6 +56,7 @@ class TranslationEditorTests(unittest.TestCase):
         self.assertIn('修订中文 $VALUE$', self.target.read_text(encoding='utf-8-sig'))
 
     def test_deployed_edit_keeps_format_backs_up_and_updates_aggregate(self):
+        self.service.save_config({'developer_mode':True})
         self.deploy()
         before = self.target.read_bytes()
         english = self.source.read_bytes()
@@ -66,8 +67,8 @@ class TranslationEditorTests(unittest.TestCase):
         with self.service.connect() as db:
             backup = db.execute('SELECT previous_files FROM deployments WHERE version_id=?', (result['version_id'],)).fetchone()
         self.assertIn(before, app.unarchive(backup[0]).values())
-        aggregate = Path(result['aggregate']['path']) / 'localisation/simp_chinese/123_test_l_simp_chinese.yml'
-        self.assertEqual(aggregate.read_bytes(), self.target.read_bytes())
+        aggregate = Path(result['aggregate']['mod_path']) / 'localisation/simp_chinese/test_l_simp_chinese.yml'
+        self.assertEqual(aggregate.read_text(encoding='utf-8-sig'), self.target.read_text(encoding='utf-8-sig'))
         self.assertEqual(self.scan()['auto_status'], 'translated')
 
     def test_conflicts_and_stale_english_are_rejected(self):

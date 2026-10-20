@@ -36,6 +36,39 @@ def canonical_key(key):
     return key.split(':', 1)[0].strip()
 
 
+def duplicate_issues(rows):
+    """Every occurrence is an error, including repeats in another source file."""
+    groups = {}
+    for row in rows:
+        groups.setdefault(canonical_key(row['key']), []).append(row)
+    result = []
+    for key, group in groups.items():
+        if len(group) < 2:
+            continue
+        locations = '、'.join(f"{row['source_file']} 第 {row['line']} 行" for row in group)
+        for row in group:
+            result.append({'file': row['source_file'], 'line': row['line'], 'key': key,
+                           'english': row['text'], 'original_line': row['original_line'],
+                           'reason': f'重复键值「{key}」；出现位置：{locations}。请修改键值后重新扫描。'})
+    return result
+
+
+def aligned_texts(originals, translations):
+    """Pair repeated keys by occurrence, never let the last occurrence replace all."""
+    source_groups, target_groups = {}, {}
+    for entry in originals:
+        source_groups.setdefault(canonical_key(entry['key']), []).append(entry)
+    for entry in translations:
+        target_groups.setdefault(canonical_key(entry['key']), []).append(entry)
+    result = {}
+    for key, group in source_groups.items():
+        targets = target_groups.get(key, [])
+        if len(group) == len(targets):
+            for source, target in zip(group, targets):
+                result[source['line']] = target['text']
+    return result
+
+
 def comparable_file(name):
     parts = Path(name).as_posix().split('/')
     while parts and parts[0] not in ('localisation', 'localization'):
@@ -55,7 +88,7 @@ def _parse_json_candidates(raw_text):
     result = []
     for key, value in payload.items():
         if isinstance(value, dict) and isinstance(value.get('source_hash'), str):
-            result.append({'key': key, 'text': value.get('text'), 'source_hash': value['source_hash']})
+            result.append({'key': value.get('key', key.split('\x1f', 1)[0]), 'text': value.get('text'), 'source_hash': value['source_hash']})
     return result
 
 
@@ -132,8 +165,118 @@ class ModCache:
                 origin TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY(mod_id,source_file,entry_key,source_hash))''')
             db.execute('CREATE INDEX IF NOT EXISTS cache_chinese ON translation_entries(mod_id,chinese_hash)')
+            db.execute('''CREATE TABLE IF NOT EXISTS mod_cache_preferences (
+                mod_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL, version_id INTEGER)''')
+
+    def selection(self, identifier):
+        with self.service.connect() as db:
+            row = db.execute('SELECT enabled,version_id FROM mod_cache_preferences WHERE mod_id=?', (identifier,)).fetchone()
+            versions = [{'id': v, 'created_at': date, 'provider': provider} for v, date, provider in db.execute(
+                'SELECT id,created_at,provider FROM versions WHERE mod_id=? ORDER BY id DESC', (identifier,))]
+            count = db.execute('SELECT COUNT(*) FROM translation_entries WHERE mod_id=?', (identifier,)).fetchone()[0]
+        return {'enabled': bool(row[0]) if row else True, 'version_id': row[1] if row else None,
+                'versions': versions, 'entries': count}
+
+    def select(self, identifier, enabled, version_id=None):
+        if type(enabled) is not bool or (version_id is not None and type(version_id) is not int):
+            raise ValueError('缓存选项无效')
+        with self.service.connect() as db:
+            if version_id is not None and not db.execute('SELECT 1 FROM versions WHERE id=? AND mod_id=?', (version_id, identifier)).fetchone():
+                raise ValueError('缓存版本不存在或不属于此 Mod')
+            db.execute('INSERT OR REPLACE INTO mod_cache_preferences VALUES (?,?,?)', (identifier, int(enabled), version_id))
+
+    def active_rows(self, item, local_entries=None):
+        """Resolve selected cache without modifying the stored latest translations."""
+        choice = self.selection(item['id'])
+        with self.service.connect() as db:
+            stored = db.execute('SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=? ORDER BY updated_at,rowid', (item['id'],)).fetchall()
+            version = db.execute('SELECT originals,chinese,provider FROM versions WHERE id=? AND mod_id=?', (choice['version_id'], item['id'])).fetchone() if choice['enabled'] and choice['version_id'] is not None else None
+        stored = [(f,k,h,request.output_text(text),origin) for f,k,h,text,origin in stored]
+        rows = list(stored) if choice['enabled'] and choice['version_id'] is None else []
+        if version:
+            from workshop_app import unarchive, target_path
+            originals, chinese = unarchive(version[0]), unarchive(version[1])
+            for name, data in originals.items():
+                target = chinese.get(target_path(name, item['game']))
+                if not target:
+                    continue
+                original = entries({name:data}, item['game'], strict=False)
+                translated = aligned_texts(original, entries({name:target}, item['game'], strict=False))
+                for entry in original:
+                    text = translated.get(entry['line'])
+                    if request.valid_translation(entry['text'], text) and (text != entry['text'] or request.is_token_only(entry['text'])):
+                        rows.append((name, entry['key'], digest(entry['text']), text, version[2] or '历史备份'))
+        # Cache opt-out must never hide valid Chinese already deployed in the Mod.
+        if local_entries:
+            known = {}
+            stored_origins = {(f,k,h,text): origin for f,k,h,text,origin in stored}
+            for f,k,h,text,origin in stored:
+                known.setdefault((f, canonical_key(k), text), set()).add(h)
+            present = {(f,k,h) for f,k,h,text,origin in rows}
+            for entry in entries(self.service.original_sources(item), item['game'], strict=False):
+                name, key, h = entry['source_file'], entry['key'], digest(entry['text'])
+                text = local_entries.get(name, {}).get(entry['line'])
+                if (request.valid_translation(entry['text'], text)
+                        and (re.search(r'[\u3400-\u9fff]', text) or request.is_token_only(entry['text']))
+                        and h in known.get((name, canonical_key(key), text), {h})):
+                    if (name,key,h) not in present:
+                        rows.append((name,key,h,text,stored_origins.get((name,key,h,text), '本机中文')))
+                        present.add((name,key,h))
+        return rows
+
+    def delete_version(self, identifier, version_id):
+        from workshop_app import unarchive, target_path, GAMES
+        # Resolve game using SQL metadata; deleting an uninstalled Mod's version is allowed.
+        with self.service.connect() as db:
+            mod = db.execute('SELECT appid FROM mods WHERE id=?', (identifier,)).fetchone()
+            version = db.execute('SELECT originals,chinese FROM versions WHERE mod_id=? AND id=?', (identifier,version_id)).fetchone()
+            if not mod or not version:
+                raise ValueError('缓存版本不存在或不属于此 Mod')
+            game = GAMES[mod[0]][0]
+            def mappings(blobs):
+                originals, chinese = map(unarchive, blobs)
+                result = set()
+                for name,data in originals.items():
+                    output = chinese.get(target_path(name,game))
+                    if output is None:
+                        continue
+                    original = entries({name:data},game,strict=False)
+                    texts = aligned_texts(original, entries({name:output},game,strict=False))
+                    for entry in original:
+                        text = texts.get(entry['line'])
+                        if request.valid_translation(entry['text'],text) and (text != entry['text'] or request.is_token_only(entry['text'])):
+                            result.add((name,entry['key'],digest(entry['text']),text))
+                return result
+            deleted = mappings(version)
+            shared = set()
+            remaining = {}
+            for original,chinese,origin in db.execute('SELECT originals,chinese,provider FROM versions WHERE mod_id=? AND id<>? ORDER BY id', (identifier,version_id)):
+                for name,key,h,text in mappings((original,chinese)):
+                    shared.add((name,key,h,text))
+                    remaining[(name,key,h)] = (text,origin or '历史备份')
+            # Keep deployment recovery independent of user-visible cache versions (EU4 overwrites English).
+            if game == 'eu4':
+                db.execute('''INSERT OR IGNORE INTO deployment_recovery
+                    SELECT d.id,v.mod_id,v.originals,v.chinese FROM deployments d JOIN versions v ON v.id=d.version_id
+                    WHERE v.mod_id=? AND v.id=?''', (identifier,version_id))
+            else:
+                db.execute('DELETE FROM deployments WHERE version_id=?', (version_id,))
+            removed = 0
+            for name,key,source_hash,text in deleted - shared:
+                removed += db.execute('''DELETE FROM translation_entries WHERE mod_id=? AND source_file=?
+                    AND entry_key=? AND source_hash=? AND chinese=?''', (identifier,name,key,source_hash,text)).rowcount
+            for (name,key,h),(text,origin) in remaining.items():
+                db.execute('''INSERT OR IGNORE INTO translation_entries
+                    (mod_id,source_file,entry_key,source_hash,chinese,chinese_hash,origin) VALUES (?,?,?,?,?,?,?)''',
+                    (identifier,name,key,h,text,digest(text),origin))
+            db.execute('INSERT INTO deleted_cache_versions VALUES (?,?)', (version_id,identifier))
+            db.execute('DELETE FROM versions WHERE mod_id=? AND id=?', (identifier,version_id))
+            db.execute('UPDATE mod_cache_preferences SET version_id=NULL WHERE mod_id=? AND version_id=?', (identifier,version_id))
+            db.execute("DELETE FROM entry_reviews WHERE mod_id=? AND status IN ('cached','needs_update')", (identifier,))
+        return removed
 
     def put(self, db, identifier, entry, text, origin):
+        text = request.output_text(text)
         db.execute('''INSERT OR REPLACE INTO translation_entries
             (mod_id,source_file,entry_key,source_hash,chinese,chinese_hash,origin)
             VALUES (?,?,?,?,?,?,?)''', (identifier, entry['source_file'], entry['key'], digest(entry['text']), text, digest(text), origin))
@@ -182,18 +325,19 @@ class ModCache:
                     existing = db.execute('''SELECT chinese FROM translation_entries WHERE
                         mod_id=? AND source_file=? AND entry_key=? AND source_hash=?''',
                         (item['id'], entry['source_file'], entry['key'], digest(entry['text']))).fetchone()
-                    if not existing:
+                    if not existing or not request.valid_translation(entry['text'], existing[0]):
                         self.put(db, item['id'], entry, valid[0], origin)
                         imported += 1
                 elif valid:
                     rejected += 1
         return {'imported': imported, 'rejected': rejected}
 
-    def sync_workspace(self, item, sources, origin='翻译缓存'):
+    def sync_workspace(self, item, sources, origin='翻译缓存', collect=True):
         workspace = self.service.data_dir / 'workspaces' / item['appid'] / item['uid']
+        selected_rows = self.active_rows(item)
         with self.service.connect() as db:
-            cached_rows = {(f, k, h): t for f, k, h, t in db.execute(
-                'SELECT source_file,entry_key,source_hash,chinese FROM translation_entries WHERE mod_id=?', (item['id'],))}
+            cached_rows = {(f, k, h): t for f, k, h, t, origin_name in selected_rows}
+            stored_rows = {(f,k,h):t for f,k,h,t in db.execute('SELECT source_file,entry_key,source_hash,chinese FROM translation_entries WHERE mod_id=?', (item['id'],))}
             for name in sources:
                 path = workspace / 'already' / item['game'] / (name + '.cache.json')
                 existing = {}
@@ -205,18 +349,22 @@ class ModCache:
                 if not isinstance(existing, dict):
                     existing = {}
                 before = json.dumps(existing, ensure_ascii=False, indent=2)
+                old_cache = existing
+                existing = {}
                 for entry in entries({name: sources[name]}, item['game'], strict=False):
                     if not entry['text'].strip():
                         continue
                     h = digest(entry['text'])
                     text = cached_rows.get((name, entry['key'], h))
-                    cached = existing.get(entry['key'], {})
+                    cached = paradox.cached_entry(old_cache, entry['key'], entry['text'])
+                    if collect and isinstance(cached, dict) and cached.get('source_hash') == h and request.valid_translation(entry['text'], cached.get('text')):
+                        text = cached['text']
+                        if stored_rows.get((name, entry['key'], h)) != text:
+                            self.put(db, item['id'], entry, text, origin)
                     if text is not None:
-                        existing[entry['key']] = {'source_hash': h, 'text': text}
-                    elif isinstance(cached, dict) and cached.get('source_hash') == h and request.valid_translation(entry['text'], cached.get('text')):
-                        self.put(db, item['id'], entry, cached['text'], origin)
+                        paradox.store_cached_entry(existing, entry['key'], entry['text'], text)
                     elif request.is_token_only(entry['text']):
-                        existing[entry['key']] = {'source_hash': h, 'text': entry['text']}
+                        paradox.store_cached_entry(existing, entry['key'], entry['text'], entry['text'])
                         self.put(db, item['id'], entry, entry['text'], '自动保留（纯标识符）')
                 after = json.dumps(existing, ensure_ascii=False, indent=2)
                 if not path.exists() or before != after:
@@ -226,6 +374,10 @@ class ModCache:
     def stats(self, item, sources):
         issues = []
         current = entries(sources, item['game'], issues=issues)
+        duplicates = duplicate_issues(current)
+        issues.extend(duplicates)
+        invalid = {(issue['file'], issue['line']) for issue in duplicates}
+        current = [entry for entry in current if (entry['source_file'], entry['line']) not in invalid]
         skipped_blank = sum(not entry['text'].strip() for entry in current)
         current = [entry for entry in current if entry['text'].strip()]
         translated = needs_update = 0
@@ -236,7 +388,8 @@ class ModCache:
             path = Path(item['path']) / target_path(filename, item['game'])
             if path.is_file():
                 try:
-                    local_entries[filename] = {canonical_key(e['key']): e['text'] for e in entries({filename: path.read_bytes()}, item['game'], strict=False)}
+                    local_entries[filename] = aligned_texts(entries({filename:sources[filename]}, item['game'], strict=False),
+                        entries({filename:path.read_bytes()}, item['game'], strict=False))
                 except (UnicodeError, OSError):
                     pass
         origins = {}
@@ -245,7 +398,7 @@ class ModCache:
             history = {}
             cached_rows = {}
             latest = {}
-            for filename, key, source_hash, chinese, origin in db.execute('SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=? ORDER BY updated_at,rowid', (item['id'],)):
+            for filename, key, source_hash, chinese, origin in self.active_rows(item, local_entries):
                 history.setdefault((filename, canonical_key(key)), set()).add(source_hash)
                 cached_rows[(filename, key, source_hash)] = (chinese, origin)
                 latest[(filename, canonical_key(key))] = (chinese, origin)
@@ -253,7 +406,6 @@ class ModCache:
                 h = digest(entry['text'])
                 row = cached_rows.get((entry['source_file'], entry['key'], h))
                 if not row and request.is_token_only(entry['text']):
-                    self.put(db, item['id'], entry, entry['text'], '自动保留（纯标识符）')
                     row = (entry['text'], '自动保留（纯标识符）')
                     cached_rows[(entry['source_file'], entry['key'], h)] = row
                 status = 'untranslated'
@@ -263,7 +415,7 @@ class ModCache:
                     translated += 1
                     chinese, origin = row
                     status = 'cached'
-                    if local_entries.get(entry['source_file'], {}).get(canonical_key(entry['key'])) == row[0]:
+                    if local_entries.get(entry['source_file'], {}).get(entry['line']) == row[0]:
                         deployed += 1
                         status = 'translated'
                     origins[row[1]] = origins.get(row[1], 0) + 1
@@ -280,11 +432,18 @@ class ModCache:
             raw = issue['original_line']
             key = raw.split(':', 1)[0].strip()
             browser_rows.append({'source_file': issue['file'], 'line': issue['line'], 'key': key,
-                                 'english': raw, 'chinese': '', 'origin': '', 'auto_status': 'format_error',
+                                 'english': issue.get('english', raw), 'chinese': '', 'origin': '', 'auto_status': 'format_error',
                                  'original_line': raw, 'reason': issue['reason'], 'historical': False})
         browser_rows.sort(key=lambda row: (row['source_file'], row['line']))
         revision = self.browser.replace(item['id'], browser_rows)
-        return {'total': len(current) + len(issues), 'skipped_blank': skipped_blank, 'translated': translated, 'deployed': deployed, 'cached': translated - deployed, 'parse_errors': len(issues), 'issues': issues, 'untranslated': len(current) - translated, 'files': len(sources), 'needs_update': needs_update, 'entry_revision': revision, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
+        effective = self.browser.list(item['id'], page_size=1)['counts']
+        deployed = effective['translated']
+        cached = effective['cached']
+        translated = deployed + cached
+        needs_update = effective['needs_update']
+        untranslated = effective['untranslated'] + needs_update
+        parse_errors = effective['format_error']
+        return {'total': len(current) + len(issues), 'skipped_blank': skipped_blank, 'translated': translated, 'deployed': deployed, 'cached': cached, 'parse_errors': parse_errors, 'issues': issues, 'untranslated': untranslated, 'files': len(sources), 'needs_update': needs_update, 'entry_revision': revision, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
 
     def export(self, item):
         with self.service.connect() as db:
@@ -295,6 +454,7 @@ class ModCache:
     def export_package(self, item):
         from workshop_app import archive, target_path
         sources = self.service.original_sources(item)
+        invalid_keys = {issue["key"] for issue in duplicate_issues(entries(sources,item["game"],strict=False))}
         # Ensure any local Chinese files in the Mod directory are indexed before exporting.
         if sources:
             self.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文')
@@ -314,7 +474,7 @@ class ModCache:
                     key = match['prefix'].lstrip()
                     src_text = paradox.source_text(match, item['game'])
                     translated = cached_rows.get((name, key, digest(src_text)))
-                    if translated is not None and request.valid_translation(src_text, translated):
+                    if canonical_key(key) not in invalid_keys and translated is not None and request.valid_translation(src_text, translated):
                         text = translated.replace('\n', r'\n')
                         if item['game'] == 'eu4':
                             text = paradox.special_escape(text, True, True)
