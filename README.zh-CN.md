@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/app-icon.png" alt="Paradox AI Translator" width="96" height="96">
+<img src="assets/app-icon.svg" alt="Paradox AI Translator" width="96" height="96">
 
 # Paradox AI Translator
 
@@ -126,11 +126,7 @@ tests/ packaging/      离线回归测试与构建脚本
 
 ## 备注
 
-- `localisation/`、`chn/`、`already/`、日志、数据库与 API Key 均只保存在本机，已被 Git 忽略。
-- Mac 与 Windows 构建未签名，请核对每次发布附带的校验文件。
-- GitHub Pages 无法运行 Python 后端，网页版需要真实服务器。
-
-如果密钥曾被提交到源码，请到服务商控制台撤销并重新创建：仅从源码删除既不会使旧密钥失效，也不会清除 Git 历史。
+Mac 与 Windows 构建未签名，请核对每次发布附带的校验文件。
 
 ---
 

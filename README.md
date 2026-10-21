@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/app-icon.png" alt="Paradox AI Translator" width="96" height="96">
+<img src="assets/app-icon.svg" alt="Paradox AI Translator" width="96" height="96">
 
 # Paradox AI Translator
 
@@ -126,11 +126,7 @@ tests/ packaging/      offline regression tests, build scripts
 
 ## Notes
 
-- `localisation/`, `chn/`, `already/`, logs, databases and API keys are local only and ignored by Git.
-- The Mac and Windows builds are unsigned; verify the checksum file shipped with each release.
-- GitHub Pages cannot host the Python backend — the web version needs a real server.
-
-If a key was ever committed, revoke it at the provider: deleting it from the source does not invalidate it or clean the history.
+The Mac and Windows builds are unsigned; verify the checksum file shipped with each release.
 
 ---
 
