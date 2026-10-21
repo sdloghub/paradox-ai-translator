@@ -1,26 +1,46 @@
-# Paradox Mod 翻译工具
+<div align="center">
 
-Mac 用户可使用独立的 `WorkshopTranslator.app`（Apple Silicon），无需安装 Python。
-安装、配置位置与重新构建方法见 [Mac使用说明.md](Mac使用说明.md)。
-构建命令：`python packaging/build_macos.py`；发布包为 `dist/WorkshopTranslator-macOS-arm64.zip`。
+<img src="assets/app-icon.png" alt="Paradox AI Translator" width="96" height="96">
 
-首页顶部提供“条目浏览库”入口，选中 Mod 后才可展开并加载索引。
-可按状态筛选并查看键名、英文、中文、来源及原文件行号。
-支持搜索、分页和持久化人工标注；英文变化后旧标注失效。人工标注不修改文件或缓存复用规则。
+# Paradox AI Translator
 
-可在“编辑原文件行”中修改完整 YML 原行，保存前备份至数据目录的 `source_backups`，
-保存后自动重新扫描并报告该行是否仍有格式错误。会保留 UTF-8 BOM、换行和其他行，
-原文件已被外部修改时拒绝覆盖。EU4 文件已被中文回写覆盖时，需先恢复英文原文件后编辑。
-已缓存和已翻译条目支持「修改中文译文」。缓存条目仅保存到 SQLite 与工作缓存；已回写条目会创建备份版本，再同步原 Mod，开发者模式下按开关更新独立翻译 Mod。旧中文与来源保存在 `translation_edits`，新来源附加「手动修订」。保存不调用 AI 翻译正文（开发者首次自动生成简介可能使用默认 API）；原文、缓存或中文文件已变化时拒绝覆盖，变量与格式标记须保持匹配。
+**Your world, Your word**
 
-工作台统计分两层展示：上方为总条目，下方为已翻译、已缓存、未翻译、需更新、格式错误。
+A workshop-aware translation workbench for five Paradox games that keeps variables, colours and formatting intact, and reuses a translation only when the English source hash still matches.
 
-当前入口为 `workshop_app.py`，翻译核心为 `paradox.py`、`request.py`，提示词为 `rules.json`。
+[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md)
 
-## 运行
+<sub>Missing your language? [Add it!](https://github.com/sdloghub/paradox-ai-translator/issues/new)</sub>
 
-macOS 双击 `启动翻译程序.command`。它会使用项目的 `.venv` 安装依赖并打开本地工作台。
-也可以在项目目录中手动运行：
+</div>
+
+---
+
+## What it does
+
+Pick a subscribed Workshop Mod, let the tool find the English localisation, translate it with your own API key, and write the Chinese back into the Mod (or export it as a separate translation Mod). It is not a prompt wrapper: most of the work is deciding what is safe to reuse, what must keep its raw formatting, and what has to stay English when something is wrong.
+
+- **Five games**: Stellaris, Hearts of Iron IV, Europa Universalis IV, Crusader Kings III, Victoria 3.
+- **Hash-matched cache**: a translation is reused only when the Mod, entry key and English SHA-256 still match. Old text never silently overwrites a changed source.
+- **Format protection**: `$variables$`, `[scripted_loc]`, §-colour codes, icons, escape sequences and duplicate keys are validated. A failing entry keeps its English line and gets a file + line number in the report.
+- **Local first**: Mods are read from your own Steam library. Config, SQLite cache and backups stay on your machine.
+- **Web version**: visitors translate a Workshop link without an account, in an isolated workspace, with a one-off API key that is never persisted.
+
+## Quick start
+
+### Web
+
+Open **https://paradox-ai-translator.com/** , paste a Workshop link, scan, fill in your API details for this task, translate, then download the result. There is no sign-up. The site keeps no API key — see the [deployment notes](服务器部署说明.md) for what the server does and does not store.
+
+### Desktop (macOS)
+
+Download `WorkshopTranslator-macOS-arm64.zip` from [Releases](https://github.com/sdloghub/paradox-ai-translator/releases), unzip, double-click `WorkshopTranslator.app`. Apple Silicon, no separate Python install. The build is not Developer-ID signed, so allow it once in *System Settings → Privacy & Security*.
+
+### Desktop (Windows)
+
+Download and unzip the release archive, then run `WorkshopTranslator.exe` (Windows 10/11 x64). Keep the `_internal` folder next to the executable. Data lives in `%LOCALAPPDATA%\WorkshopTranslator\app_data`.
+
+### From source
 
 ```sh
 python3 -m venv .venv
@@ -28,121 +48,92 @@ python3 -m venv .venv
 .venv/bin/python workshop_app.py
 ```
 
-在工作台设置并保存 API、模型与 Steam 库路径，选择游戏和 Mod，再扫描、翻译并回写。
-演示模式可运行 `演示程序.command` 或 `.venv/bin/python workshop_app.py --demo`，不调用付费接口。
+Offline demo, no paid API calls: `.venv/bin/python workshop_app.py --demo`.
 
-## 缓存与失败
+## How a translation runs
 
-工作台按 Mod、条目键和英文 SHA-256 保存 SQLite 翻译缓存，仅复用原文及格式校验匹配的译文。
-翻译完成后备份并回写原 Mod；格式错误和翻译失败的条目保留英文，日志记录文件、行号与原文。
-失败结果不写入成功缓存，下次可继续尝试。开发者模式可在回写后自动生成独立翻译 Mod。
-同一 Mod 英文文件内及跨文件的重复键（忽略冒号后的版本号）标为格式错误，每一处列出键名、文件和全部出现行号。条目浏览库可直接修改键名，备份后保存并重扫；脚本中引用该键的位置需相应调整。重复键在修正前保留英文，不请求 AI。纯变量条目优先使用有效中文缓存。
-旧缓存中的纯英文回复不再算作完成译文。格式校验失败时，重试使用受保护占位符保留变量、转义与原文异常标记，失败日志列出缺少或新增的格式标记。
-解析支持转义引号、尾部注释、UTF-8 BOM；校验保护变量、图标和颜色格式，不保证术语与语义正确。
+```text
+ACF manifest  →  scan Mod  →  extract English + existing Chinese
+                              ↓
+                     hash-matched cache  →  translate only what is missing
+                              ↓
+                     format validation  →  write back / export
+```
 
-切换「导入缓存」或历史版本时，仅查询所选 Mod 的 SQLite 扫描快照与缓存，不重新遍历 Mod 目录、不回写工作缓存、不重建全库完成记录。已回写中文保持显示；首次使用升级后的版本需扫描一次以建立快照。外部文件变化通过「扫描此 Mod」检查，翻译和生成前仍会重新扫描校验原文。
+1. **Refresh** reads `appworkshop_<AppID>.acf` for the installed item list instead of walking every game directory.
+2. **Scan Mod** extracts English entries and their hashes, plus any Chinese already present in the Mod.
+3. **Translate** sends only untranslated or stale entries; each batch keeps protected placeholders.
+4. **Review** the entry browser: filter by translated / cached / untranslated / needs update / format error, edit individual lines or translations, with backups before anything is overwritten.
+5. **Export** a standalone translation Mod, or just write the Chinese back into the original.
 
-## 服务器与 GitHub
+## Safety rules that are not optional
 
-Linux 服务器可运行个人工作台，通过 SSH 隧道连接现有本机端口；Mod 文件和 SQLite 必须位于服务器。GitHub 用于源码、离线测试与安装包发布；GitHub Pages 无法执行 Python 后端。安装命令、systemd 服务与现有 GitHub 发布流程见 [服务器部署说明.md](服务器部署说明.md)。
+| Situation | Behaviour |
+| --- | --- |
+| English source changed | Old translation marked *needs update*, not reused |
+| Variables or formatting broken | Entry keeps English, logged with file and line |
+| Duplicate key in a file | Flagged as a format error, no API call made |
+| Source file edited elsewhere | Write refused instead of overwriting |
+| Translation failed | Kept out of the success cache so it can be retried |
 
-## 测试
+## Workshop-aware caching
+
+The cache is keyed by Mod, entry key and English SHA-256 inside SQLite. A manual edit creates a new version and keeps the old Chinese and its source in `translation_edits`; the new row is tagged as a manual revision. Deleting a cached version removes only that version's rows and mapping — other versions, shared entries and the Chinese already inside the original Mod stay.
+
+Every destructive action backs up first, then removes. The *clear translation files* button restores English for EU4 rather than deleting blindly.
+
+## Generating a translation Mod
+
+The generated Mod is placed in `Documents/Paradox Interactive/<Game>/mod/` as `workshop_translation_<AppID>_<UID>.mod` plus a folder of the same name, holding `descriptor.mod`, `localisation/`, the description, a ZIP, a source list and a usage note. The original Mod's cover image is copied as `thumbnail.*`.
+
+Only entries whose English hash matches and whose formatting validates are exported. The `remote_file_id` is never invented: a first upload gets its ID from Steam, and regeneration of an already published patch only keeps an ID that is present and consistent. Publishing to the Workshop from the tool is not enabled — use the game launcher.
+
+## Sharing and credit
+
+A finished translation can be shared voluntarily. Credit is optional and empty means anonymous; the model shown is the one that actually completed the task, not a value from the submission form. Publishing permission to the Workshop is a separate, unchecked, default-off opt-in. Sharing does not equal publishing permission, and permission does not mean this run may publish.
+
+## Testing
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
 
-测试使用模拟接口，不会调用真实 API。
+Tests use fake providers; no real API is called. Release builds run the same suite plus `--self-test` before artifacts are uploaded.
 
-曾写入源码的密钥应在服务商控制台撤销并重新创建；删除源码中的密钥不会使旧密钥失效，也不会清除 Git 历史。
+## Documentation
 
-## Git 文件管理
+| Document | Contents |
+| --- | --- |
+| [新手教程.md](新手教程.md) | Step-by-step first run |
+| [Mac使用说明.md](Mac使用说明.md) | macOS package and rebuild |
+| [Windows使用说明.md](Windows使用说明.md) | Windows package and rebuild |
+| [服务器部署说明.md](服务器部署说明.md) | Self-hosting the web version |
 
-`localisation/`（翻译原文）、`chn/`（输出译文）、`already/`（翻译缓存）均只在本地保存，不提交到 Git。日志、Python 缓存、虚拟环境和本地密钥文件也已忽略。
-Git 中保留源码、`rules.json`、依赖声明、测试和说明文档。当前工作台通过配置的 Steam 库读取 Mod，配置、SQLite 数据库、备份与工作目录均只保存在本机。
+The interface and user documentation are in Chinese; the README is available in English, Simplified Chinese and Traditional Chinese as listed at the top.
 
-## Windows EXE
+## Repo layout
 
-文件夹打包配置、Windows 本机构建脚本和 GitHub Actions 工作流已加入，避免单文件启动时反复解压依赖。
-使用与构建方法见 [Windows使用说明.md](Windows使用说明.md)。
+```text
+workshop_app.py        service, tasks, HTTP API, APP_VERSION
+workshop_ui.html       shared workbench UI
+server_*.py            web version: sessions, workshop download, upload
+paradox.py request.py  translation core and model requests
+rules.json             prompts and formatting rules
+translation_cache.py   SQLite cache, entry index
+mod_export.py          patch, cover and export
+tests/ packaging/      offline regression tests, build scripts
+```
 
-单个 Mod 扫描支持已有中文自动提取与翻译统计；可手动导入中文文件、文件夹和带原文哈希的缓存 JSON，或导出缓存。
-对应关系保存在 SQLite `translation_entries` 表中，按 Mod、原文件、条目键与英文哈希保存历史译文。
+## Notes
 
-### 一键生成翻译 Mod
+- `localisation/`, `chn/`, `already/`, logs, databases and API keys are local only and ignored by Git.
+- The Mac and Windows builds are unsigned; verify the checksum file shipped with each release.
+- GitHub Pages cannot host the Python backend — the web version needs a real server.
 
-选中 Mod 后点击「一键生成翻译 Mod」，填写名称和简介，再点击生成。简介留空时使用当前激活的默认 API 配置（提供商、模型、接口与密钥）；仅发送游戏、原 Mod 名称、链接和有效译文数量，可能产生费用。填写简介则不调用接口。生成失败可填写简介后重试；演示模式不调用付费接口。
+If a key was ever committed, revoke it at the provider: deleting it from the source does not invalidate it or clean the history.
 
-自动简介统一为三段：简短的汉化补丁介绍（含原模组订阅、加载顺序和未完成提示）、本翻译器的 GitHub 项目介绍、幽默求 Star。AI 仅生成第一段，项目链接和后两段由固定模板补全；演示及无 API 的自动生成也使用相同结构。手动简介与自动更新时复用的已有简介保持原样。
+---
 
-群星默认生成到 `Documents/Paradox Interactive/Stellaris/mod/`：`workshop_translation_<AppID>_<原ModUID>.mod` 与同名文件夹放在同一目录，文件夹直接包含 `descriptor.mod`、`localisation/`、简介、ZIP、来源清单与使用说明。其他游戏使用各自的 Paradox Interactive 游戏目录；维多利亚 3 使用 `.metadata/metadata.json`。隔离数据目录及演示模式默认使用其内部的 `Documents/`；可用 `--documents-dir` 显式指定文档目录。
-
-生成时复制原 Mod 的 `picture` 指向的本地图片，找不到声明时尝试 `thumbnail.png/jpg/jpeg/gif`；复制为 `thumbnail.<原格式>` 并设置汉化 Mod 的 `picture`。图片不存在则提示，拒绝读取越出原 Mod 目录的路径。只导出英文哈希匹配、格式校验通过的中文，跳过未翻译、需更新与格式错误条目；兼容版本沿用原 Mod 声明。
-
-生成结果可直接在本机启动器启用，也可下载 ZIP。简介在 `description.txt` 中。创意工坊投稿入口尚未启用，请在游戏启动器手动发布；本地文件夹名不是工坊 ID，新发布不能复制原作者的 `remote_file_id`，也不能自行编造 ID。首次生成不写入 `remote_file_id`，由 Steam 首次发布时自动分配；重新生成已发布补丁时，只保留该补丁描述文件中已有且一致的 ID，避免更新变成新条目。旧目录保留，不自动迁移或删除。
-
-### 开发者自动生成
-
-原聚合汉化功能改为每个原 Mod 的独立翻译补丁：配置 `developer_mode: true` 时才显示自动生成面板，且 `aggregate_export` 开关开启时，回写或恢复后自动生成。普通用户与发布包默认关闭开发者模式；这是本机功能开关，不是账号权限认证。API 配置切换不改变该开关。
-
-自动生成优先复用已有简介；首次有默认 API 时生成简介，无 API 时使用明确标注的模板。旧成果完整备份到数据目录的 `generated_mod_backups/` 再更新。原 `aggregate_mods/` 目录保留，不自动迁移或删除；不同 Mod 不再合并。自动生成失败单独记入日志，不撤销已完成的原 Mod 回写。
-
-维多利亚 3 元数据格式参考 [Paradox Wiki Mod structure](https://vic3.paradoxwikis.com/Mod_structure)，其依赖使用原 Mod 元数据 ID，缺少该 ID 时在说明中提示手动同时启用原 Mod。当前生成结构已做自动测试，尚未在五款游戏启动器中逐一加载验证。
-
-### 游戏分类、扫描与来源
-
-点击搜索栏下方的游戏分类后显示对应 Mod。「刷新目录」优先解析 steamapps/workshop/appworkshop_<AppID>.acf，以 WorkshopItemsInstalled 为安装清单，并检查 content/<AppID>/<UID> 目录是否存在；不枚举整游戏 Mod 目录，不递归读取翻译内容。首次显示「未扫描」；进入具体 Mod 后点击「扫描此 Mod」，才提取中文并校验英文 SHA-256。名称查询针对新增、已安装版本指纹变化或上次查询失败的记录。已安装版本指纹由 manifest、timeupdated、size 组成；timetouched、subscribedby 与 latest_* 不影响本机版本判定。本机清单重启后直接加载。
-
-ACF 无法发现用户手动修改的深层文件，因此使用旧统计时仍建议扫描所选 Mod；已安装版本变化的旧结果标注「待复查」。扫描后显示总条目、已翻译、未翻译、需更新；需更新表示同一条目已有旧译文但原文不匹配。API 待处理数量为未翻译与需更新之和。
-
-API 设置填写提供商名称，配置保存在本机 config.json 与 providers.json。手动导入也可填写汉化组或译者名称。留空时按「翻译-日期-版次」命名，版次持续累加。来源按有效条目汇总，补充翻译不会改写原有导入来源。completed.json 保存译文及原文哈希的完成标记，后续操作更新已有文件。SQLite 继续保存完整备份。
-
-### 程序发布压缩包
-
-每次打包生成 dist/WorkshopTranslator-Windows.zip。解压后的 WorkshopTranslator 文件夹内，EXE、Python 工具、config.json、providers.json、completed.json 并列，资源位于 assets/vendor，EXE 运行依赖位于 _internal。请完整解压并保留 _internal，不要单独移动 EXE。发布包 API Key 留空；本机保存的密钥保留原值。
-
-运行 `python packaging/build_release.py --data-dir app_data` 会复制指定数据目录的最新配置与完成记录，更新已有发布 ZIP。首次运行读取包内配置；已有本机保存时保留现有配置，完成标记按英文哈希合并。Windows 数据仍保存于 %LOCALAPPDATA%/WorkshopTranslator/app_data/。完整历史备份以本机数据库为准，JSON 完成标记用于恢复缓存。
-
-GitHub 构建只使用空配置模板，不上传本机密钥、Mod、数据库或完成记录。Steam 投稿入口位于生成翻译 Mod 窗口，仍显示「尚未启用」，不会上传内容。
-
-### 保存与切换 API 配置
-
-在「API 与 Steam 库设置」填写配置名称，再点击「保存配置」。同名配置更新保存，不同名称可分别保存同一提供商的不同模型。下拉选取已保存配置后点击「使用此配置」，加载对应接口、模型和本地密钥，Steam 库目录保持当前设置。翻译任务运行期间不能切换。API Key 保存在本机 providers.json，页面只显示是否已保存密钥；发布 ZIP 中密钥留空。
-
-### 提示词与启动优化
-
-rules.json 的提示词统一保护变量、图标、颜色格式、转义符和批次分隔符；各游戏保留独立风格，允许必要的括号与专名。启动时延迟加载模型 SDK，未改变的完成记录不重复导入，缓存目录清单直接读取。`--startup-check` 输出内部启动耗时且不调用外部接口。Windows 构建额外比较同代码单文件与文件夹模式，每种测量三次，结果保存在 startup-benchmark.json；该测量不包含浏览器渲染，也不代表所有用户电脑的耗时。
-
-### ACF 清单
-
-每个游戏库的每个游戏 ACF 每次刷新只读取一次，保留 manifest 为字符串。WorkshopItemDetails 单独出现的物品不视为已安装；latest_manifest 不同或 latest_timeupdated 较新时提示 Steam 有待安装更新。完整的空安装清单会清空当前列表，历史备份仍保留。清单缺失、无效或写入不完整时提示并回退到目录检查。仅支持五个 Paradox 游戏；ACF兼容范围以用户样例与测试为准，未找到官方公开字段规范。
-
-
-
-## 报错保留英文与缓存状态（2026-10-10）
-
-Workshop 工作台遇到本地化解析异常或模型返回 ValueError 时，不再中止整个 Mod：问题行保留英文，其余条目继续，结束后返回报错行数、文件与行号，明细保存在工作目录 translation-report.json；已有中文文件仍先备份，失败条目不写入成功缓存。
-
-已翻译表示有效缓存译文已写入本机 Mod；已缓存表示英文哈希匹配但尚未写入的译文。旧统计字段 translated 保留内部“有效译文总数”含义，界面采用 deployed 显示已写入数量，cached 显示待写入缓存。
-
-导入时提示：带哈希缓存只核对本机英文，无法检查 Steam 尚未安装的更新；无哈希中文无法判断原文是否更新，需要用户确认来源版本。扫描按钮改为橙色，开始AI翻译保持蓝色。
-
-### 缓存选择与清理
-
-选择 Mod 后，“导入缓存（自动复用）”默认开启并选择最新 SQLite 缓存，也可选择某次历史备份。关闭后不复用尚未回写的缓存；原 Mod 内有效中文仍保留。切换后自动重算“已翻译 / 已缓存 / 未翻译 / 需更新 / 格式错误”和条目浏览索引。仅匹配当前英文哈希的缓存参与复用；缓存不能检查 Steam 尚未安装的更新。
-
-“中文备份库”中，每个 Mod 的各版本记录后都有醒目的“删除缓存”按钮。确认后仅删除该版本的 SQL 备份和独占缓存映射；其他版本、共享缓存及原 Mod 中文保留。删除正在选用的版本后自动切回最新剩余缓存，刷新词条状态。EU4 的已回写英文恢复信息单独保留。以后扫描原 Mod 时，其现存中文仍可重新提取。
-
-“清除翻译文件”仍会先备份，再移除本机中文（EU4 恢复英文），并保留 SQLite 缓存。两项清理操作均使用跟随主题的危险操作颜色。
-
-### 多 Mod 并行任务
-
-可在一个 Mod 翻译时切换其他 Mod 并继续扫描、导入、编辑、导出或启动 AI 翻译。同一 Mod 的写入操作互斥，目录刷新可同时运行；任务进度栏按 Mod 列出任务并切换独立日志。每个任务保留启动时的 API 配置快照，后续切换配置只影响新任务。每个 Mod 内的接口并发数仍由配置控制。配置文件保存位置涉及共享文件路径，需等待任务结束后切换。
-
-版本记录直接以当前 Mod 名称显示，不再嵌套“中文备份库”栏目；关闭导入缓存时隐藏版本选项。四种主题中，同一操作行使用统一配色。
-
-## 网页版
-
-网页版通过工坊链接查询、下载 Mod 并保留本地化文件，访客使用独立工作区，无需注册。点击「不会使用？」打开分步教程。API Key 仅供本次任务使用，不写入配置、数据库或浏览器存储；可使用一次性 Key。网页版隐藏访客的保存配置与额外 Steam 库设置，开发者登录后可管理配置，但仍不保存 Key。
-
-完成翻译后可自愿共享；共享时可署名（留空为匿名），网站展示实际翻译模型。其他访客可复用原文匹配的译文。允许开发者发布到创意工坊是单独的可选授权，默认不勾选，导出保留署名及模型。共享本身不会自动发布创意工坊。部署见 [服务器部署说明.md](服务器部署说明.md)。
+<div align="center">
+<sub>Your world, Your word · <a href="https://github.com/sdloghub/paradox-ai-translator/issues/new">Missing your language? Add it!</a></sub>
+</div>
