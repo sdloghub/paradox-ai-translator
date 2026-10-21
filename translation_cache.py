@@ -165,6 +165,8 @@ class ModCache:
                 origin TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY(mod_id,source_file,entry_key,source_hash))''')
             db.execute('CREATE INDEX IF NOT EXISTS cache_chinese ON translation_entries(mod_id,chinese_hash)')
+            db.execute('''CREATE TABLE IF NOT EXISTS cache_scan_snapshots (
+                mod_id TEXT PRIMARY KEY, sources BLOB NOT NULL, local_entries TEXT NOT NULL)''')
             db.execute('''CREATE TABLE IF NOT EXISTS mod_cache_preferences (
                 mod_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL, version_id INTEGER)''')
 
@@ -185,7 +187,7 @@ class ModCache:
                 raise ValueError('缓存版本不存在或不属于此 Mod')
             db.execute('INSERT OR REPLACE INTO mod_cache_preferences VALUES (?,?,?)', (identifier, int(enabled), version_id))
 
-    def active_rows(self, item, local_entries=None):
+    def active_rows(self, item, local_entries=None, sources=None):
         """Resolve selected cache without modifying the stored latest translations."""
         choice = self.selection(item['id'])
         with self.service.connect() as db:
@@ -213,7 +215,7 @@ class ModCache:
             for f,k,h,text,origin in stored:
                 known.setdefault((f, canonical_key(k), text), set()).add(h)
             present = {(f,k,h) for f,k,h,text,origin in rows}
-            for entry in entries(self.service.original_sources(item), item['game'], strict=False):
+            for entry in entries(sources if sources is not None else self.service.original_sources(item), item['game'], strict=False):
                 name, key, h = entry['source_file'], entry['key'], digest(entry['text'])
                 text = local_entries.get(name, {}).get(entry['line'])
                 if (request.valid_translation(entry['text'], text)
@@ -371,7 +373,7 @@ class ModCache:
                     paradox.atomic_write(path, after)
         return workspace
 
-    def stats(self, item, sources):
+    def stats(self, item, sources, local_entries=None):
         issues = []
         current = entries(sources, item['game'], issues=issues)
         duplicates = duplicate_issues(current)
@@ -382,23 +384,27 @@ class ModCache:
         current = [entry for entry in current if entry['text'].strip()]
         translated = needs_update = 0
         deployed = 0
-        local_entries = {}
-        from workshop_app import target_path
-        for filename in sources:
-            path = Path(item['path']) / target_path(filename, item['game'])
-            if path.is_file():
-                try:
-                    local_entries[filename] = aligned_texts(entries({filename:sources[filename]}, item['game'], strict=False),
-                        entries({filename:path.read_bytes()}, item['game'], strict=False))
-                except (UnicodeError, OSError):
-                    pass
+        if local_entries is None:
+            local_entries = {}
+            from workshop_app import target_path, archive
+            for filename in sources:
+                path = Path(item['path']) / target_path(filename, item['game'])
+                if path.is_file():
+                    try:
+                        local_entries[filename] = aligned_texts(entries({filename:sources[filename]}, item['game'], strict=False),
+                            entries({filename:path.read_bytes()}, item['game'], strict=False))
+                    except (UnicodeError, OSError):
+                        pass
+            with self.service.connect() as db:
+                db.execute('INSERT OR REPLACE INTO cache_scan_snapshots VALUES (?,?,?)',
+                           (item['id'], archive(sources), json.dumps(local_entries, ensure_ascii=False)))
         origins = {}
         browser_rows = []
         with self.service.connect() as db:
             history = {}
             cached_rows = {}
             latest = {}
-            for filename, key, source_hash, chinese, origin in self.active_rows(item, local_entries):
+            for filename, key, source_hash, chinese, origin in self.active_rows(item, local_entries, sources):
                 history.setdefault((filename, canonical_key(key)), set()).add(source_hash)
                 cached_rows[(filename, key, source_hash)] = (chinese, origin)
                 latest[(filename, canonical_key(key))] = (chinese, origin)
@@ -444,6 +450,18 @@ class ModCache:
         untranslated = effective['untranslated'] + needs_update
         parse_errors = effective['format_error']
         return {'total': len(current) + len(issues), 'skipped_blank': skipped_blank, 'translated': translated, 'deployed': deployed, 'cached': cached, 'parse_errors': parse_errors, 'issues': issues, 'untranslated': untranslated, 'files': len(sources), 'needs_update': needs_update, 'entry_revision': revision, 'origins': [{'name': name, 'count': count} for name, count in sorted(origins.items())]}
+
+    def refresh_selection(self, item):
+        """Re-evaluate just this Mod using its last SQL scan, without filesystem I/O."""
+        from workshop_app import unarchive
+        with self.service.connect() as db:
+            row = db.execute('SELECT sources,local_entries FROM cache_scan_snapshots WHERE mod_id=?',
+                             (item['id'],)).fetchone()
+        if row is None:
+            return None
+        local = {name: {int(line): text for line, text in lines.items()}
+                 for name, lines in json.loads(row[1]).items()}
+        return self.stats(item, unarchive(row[0]), local_entries=local)
 
     def export(self, item):
         with self.service.connect() as db:

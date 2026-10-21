@@ -144,6 +144,7 @@
     load();
   }
   function open() {
+    if (!state?.mods.some(mod => mod.id === selected)) return;
     const panel = $('entry_browser');
     if (panel && panel.tagName === 'DETAILS') panel.open = true;
     const mod = state?.mods.find(mod => mod.id === selected);
@@ -152,7 +153,7 @@
     panel.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start'});
   }
   $('browse_entries').onclick = open;
-  $('open_entry_library').onclick = open;
+  if ($('open_entry_library')) $('open_entry_library').onclick = open;
   $('entry_close').onclick = () => {
     const panel = $('entry_browser');
     if (panel && panel.tagName === 'DETAILS') panel.open = false;
@@ -178,6 +179,11 @@
   };
   window.syncEntryBrowser = () => {
     if (!state) return;
+    const enabled = state.mods.some(mod => mod.id === selected);
+    const summary = $('entry_browser').querySelector('summary');
+    summary.setAttribute('aria-disabled', String(!enabled));
+    summary.tabIndex = enabled ? 0 : -1;
+    if (!enabled) $('entry_browser').open = false;
     let shouldReload = false;
     if (pendingEdit && modJob(pendingEdit.id).kind === 'edit-entry' && !modJob(pendingEdit.id).running) {
       const finished = pendingEdit; const job=modJob(finished.id); pendingEdit = null;
@@ -223,5 +229,8 @@
     }
   };
   render();
+  $('entry_browser').querySelector('summary').addEventListener('click', event => {
+    if (!state?.mods.some(mod => mod.id === selected)) event.preventDefault();
+  });
   window.syncEntryBrowser();
 })();

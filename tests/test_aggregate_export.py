@@ -1,5 +1,6 @@
 """Developer auto-export now produces separate translation Mods, not a merged tree."""
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -56,6 +57,69 @@ class ModExportTests(unittest.TestCase):
         self.assertEqual(result['entries'],1)
         self.assertTrue(result['warnings'])
 
+    def test_original_picture_copied_to_installed_mod_and_zip(self):
+        (self.mod/'images').mkdir()
+        image = b'original-cover-image'
+        (self.mod/'images/cover.jpg').write_bytes(image)
+        descriptor = self.mod/'descriptor.mod'
+        descriptor.write_text(descriptor.read_text() + 'picture="images/cover.jpg"\n')
+        result = self.generate()
+        root = Path(result['mod_path'])
+        self.assertEqual((root/'thumbnail.jpg').read_bytes(), image)
+        self.assertIn('picture="thumbnail.jpg"', (root/'descriptor.mod').read_text())
+        launcher = root.with_suffix('.mod').read_text()
+        self.assertIn('picture="thumbnail.jpg"', launcher)
+        self.assertIn('path="mod/'+root.name+'"', launcher)
+        self.assertNotIn('remote_file_id', launcher)
+        self.assertFalse((root/safe_id(self.item)).exists())
+        with zipfile.ZipFile(root/result['zip_name']) as package:
+            self.assertEqual(package.read(root.name+'/thumbnail.jpg'), image)
+
+    def test_picture_cannot_escape_source_mod(self):
+        outside = self.root/'private.jpg'
+        outside.write_bytes(b'private image')
+        (self.mod/'descriptor.mod').write_text('picture="../../../../../private.jpg"\n')
+        result = self.generate()
+        self.assertFalse((Path(result['mod_path'])/'thumbnail.jpg').exists())
+
+    def test_new_patch_leaves_workshop_id_for_steam(self):
+        result = self.generate()
+        root = Path(result['path'])
+        self.assertEqual(result['folder_name'], safe_id(self.item))
+        self.assertNotIn('generated_uid', result)
+        manifest = json.loads((root/'source-manifest.json').read_text())
+        self.assertNotIn('generated_uid', manifest)
+        with zipfile.ZipFile(root/result['zip_name']) as package:
+            for name in (root.name+'/descriptor.mod', root.name+'.mod'):
+                self.assertNotIn('remote_file_id', package.read(name).decode())
+
+    def test_regeneration_preserves_steam_assigned_id_of_published_patch(self):
+        result = self.generate()
+        root = Path(result['path'])
+        for path in (root/'descriptor.mod', root.with_suffix('.mod')):
+            path.write_text(path.read_text() + 'remote_file_id="3823400171"\n')
+        result = self.generate()
+        for path in (root/'descriptor.mod', root.with_suffix('.mod')):
+            self.assertIn('remote_file_id="3823400171"', path.read_text())
+        with zipfile.ZipFile(root/result['zip_name']) as package:
+            for name in (root.name+'/descriptor.mod', root.name+'.mod'):
+                self.assertIn('remote_file_id="3823400171"', package.read(name).decode())
+
+    def test_regeneration_rejects_conflicting_or_original_workshop_ids(self):
+        result = self.generate()
+        root = Path(result['path'])
+        descriptor = root/'descriptor.mod'
+        launcher = root.with_suffix('.mod')
+        descriptor.write_text(descriptor.read_text() + 'remote_file_id="3823400171"\n')
+        launcher.write_text(launcher.read_text() + 'remote_file_id="999"\n')
+        with self.assertRaisesRegex(ValueError, '不一致'):
+            self.generate()
+        for path in (descriptor, launcher):
+            text = re.sub(r'remote_file_id="[0-9]+"', 'remote_file_id="123"', path.read_text())
+            path.write_text(text)
+        with self.assertRaisesRegex(ValueError, '误用了原 Mod'):
+            self.generate()
+
     def test_default_hides_automatic_export_and_old_aggregate_stays_untouched(self):
         self.assertFalse(self.service.config()['developer_mode'])
         self.assertFalse(export(self.service,self.item,{},1)['enabled'])
@@ -69,10 +133,21 @@ class ModExportTests(unittest.TestCase):
         self.service.save_config({'developer_mode':True})
         result=export(self.service,self.item,{},1)
         self.assertTrue(result['enabled'])
-        self.assertIn('/Documents/Stellaris/mod/',result['path'].replace('\\','/'))
+        self.assertIn('/Documents/Paradox Interactive/Stellaris/mod/',result['path'].replace('\\','/'))
         self.assertNotEqual(Path(result['path']).name, self.item['uid'])
-        self.assertRegex(Path(result['path']).name, r'^[0-9]{10}$')
+        self.assertEqual(Path(result['path']).name, safe_id(self.item))
+        self.assertEqual(Path(result['mod_path']), Path(result['path']))
+        self.assertTrue(Path(result['path']).with_suffix('.mod').is_file())
         self.assertIn('默认模板',result['description_source'])
+        paragraphs = result['description'].split('\n\n')
+        self.assertEqual(len(paragraphs), 3)
+        self.assertIn(self.item['title'], paragraphs[0])
+        self.assertIn('之后加载', paragraphs[0])
+        self.assertIn('https://github.com/sdloghub/paradox-ai-translator', paragraphs[1])
+        self.assertIn('Vibe coding', paragraphs[1])
+        self.assertIn('API Key', paragraphs[1])
+        self.assertIn('Star', paragraphs[2])
+        self.assertIn('😭', paragraphs[2])
         self.service.save_config({'aggregate_export':False})
         self.assertFalse(export(self.service,self.item,{},1)['enabled'])
 
@@ -88,11 +163,15 @@ class ModExportTests(unittest.TestCase):
 
     def test_blank_intro_uses_default_api_and_never_sends_source_files(self):
         self.service.save_config({'api_key':'test-only','model':'chosen-model','provider':'我的提供商'})
-        response=Mock(); response.choices=[Mock(message=Mock(content='模型生成的简介'))]
+        response=Mock(); response.choices=[Mock(message=Mock(content='模型生成的简介\n\n仍在汉化中'))]
         client=Mock(); client.chat.completions.create.return_value=response
         with patch('request.load_sdk'), patch('request.OpenAI',return_value=client) as factory:
             result=build(self.service,self.item)
-        self.assertEqual(result['description'],'模型生成的简介')
+        paragraphs = result['description'].split('\n\n')
+        self.assertEqual(len(paragraphs), 3)
+        self.assertEqual(paragraphs[0], '模型生成的简介 仍在汉化中')
+        self.assertIn('https://github.com/sdloghub/paradox-ai-translator', paragraphs[1])
+        self.assertIn('Star', paragraphs[2])
         args=client.chat.completions.create.call_args.kwargs
         self.assertEqual(args['model'],'chosen-model')
         self.assertNotIn('Alpha $VALUE$',json.dumps(args['messages']))
@@ -138,6 +217,23 @@ class ModExportTests(unittest.TestCase):
         with patch.object(Path,'rename',fail):
             with self.assertRaises(OSError):self.generate()
         self.assertEqual((root/first['zip_name']).read_bytes(),before)
+
+    def test_failed_sibling_descriptor_write_restores_previous_mod(self):
+        first = self.generate()
+        root = Path(first['path'])
+        before = (root/first['zip_name']).read_bytes()
+        launcher = root.with_suffix('.mod')
+        previous_launcher = launcher.read_bytes()
+        original = app.atomic_bytes
+        def fail(path, data):
+            if path == launcher:
+                raise OSError('cannot write launcher descriptor')
+            return original(path, data)
+        with patch.object(app, 'atomic_bytes', side_effect=fail):
+            with self.assertRaises(OSError):
+                self.generate(title='different title')
+        self.assertEqual((root/first['zip_name']).read_bytes(), before)
+        self.assertEqual(launcher.read_bytes(), previous_launcher)
 
     def test_source_change_during_description_preserves_previous_package(self):
         first=self.generate();root=Path(first['path']);before=(root/first['zip_name']).read_bytes()

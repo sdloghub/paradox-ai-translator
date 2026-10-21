@@ -1,6 +1,7 @@
 """Cache selection must control both displayed states and actual AI reuse."""
 import json
 import unittest
+from unittest.mock import patch
 
 import test_entry_browser as browser_tests
 from translation_cache import entries
@@ -48,6 +49,23 @@ class CacheControlTests(unittest.TestCase):
         self.service.select_cache(self.identifier, True)
         self.assertEqual(self.row('cached')['auto_status'], 'cached')
 
+    def test_toggle_uses_only_mod_sql_and_never_scans_or_rewrites_workspace(self):
+        self.seed()
+        self.scan()
+        with patch.object(self.service, 'analyze', side_effect=AssertionError('full scan')), \
+             patch.object(self.service, 'original_sources', side_effect=AssertionError('read source')), \
+             patch.object(self.service.cache, 'sync_workspace', side_effect=AssertionError('workspace rewrite')):
+            self.service.select_cache(self.identifier, False)
+            self.assertEqual(self.row('deployed')['auto_status'], 'translated')
+            self.service.select_cache(self.identifier, True)
+            self.assertEqual(self.row('cached')['auto_status'], 'cached')
+
+    def test_unscanned_toggle_saves_preference_without_filesystem_scan(self):
+        with patch.object(self.service, 'analyze', side_effect=AssertionError('full scan')):
+            result = self.service.select_cache(self.identifier, False)
+        self.assertTrue(result['needs_scan'])
+        self.assertFalse(result['selection']['enabled'])
+
     def test_opt_out_retranslates_but_does_not_erase_saved_cache(self):
         self.simple_source()
         self.service.translate(self.identifier, self.translator('第一版中文'), deploy=False)
@@ -69,6 +87,7 @@ class CacheControlTests(unittest.TestCase):
         self.service.select_cache(self.identifier, True)
         self.assertEqual(self.row('cached')['chinese'], '第二版中文')
         self.source.write_text('l_english:\n cached:0 "Changed English"\n', encoding='utf-8')
+        self.scan()  # External changes are detected by an explicit scan, not by a SQL-only toggle.
         self.service.select_cache(self.identifier, True, first['version_id'])
         self.assertEqual(self.row('cached')['auto_status'], 'needs_update')
         self.assertTrue(self.row('cached')['historical'])

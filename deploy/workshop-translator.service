@@ -1,0 +1,26 @@
+[Unit]
+Description=Paradox Workshop Translator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=translator
+Group=translator
+WorkingDirectory=/srv/workshop-translator/app
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=TRANSLATOR_STEAMCMD=/srv/workshop-translator/data/steamcmd/steamcmd
+EnvironmentFile=/srv/workshop-translator/login.env
+ExecStart=/srv/workshop-translator/app/.venv/bin/python workshop_app.py --server-mode --no-browser --port 8765 --data-dir /srv/workshop-translator/data --documents-dir /srv/workshop-translator/Documents
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/workshop-translator/data /srv/workshop-translator/Documents
+
+[Install]
+WantedBy=multi-user.target

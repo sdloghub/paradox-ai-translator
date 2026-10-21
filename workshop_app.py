@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.20-parallel.1'
+APP_VERSION = '2026.10.21-sharing.1'
 
 
 def program_directory():
@@ -260,6 +260,7 @@ class WorkshopService:
                 db.execute("ALTER TABLE versions ADD COLUMN provider TEXT NOT NULL DEFAULT ''")
             if 'origins' not in columns:
                 db.execute("ALTER TABLE versions ADD COLUMN origins TEXT NOT NULL DEFAULT '[]'")
+            db.execute('CREATE INDEX IF NOT EXISTS versions_by_mod ON versions(mod_id,id)')
             db.execute('CREATE TABLE IF NOT EXISTS seed_imports (path TEXT PRIMARY KEY, signature TEXT NOT NULL)')
             db.execute("CREATE TABLE IF NOT EXISTS source_runs (id INTEGER PRIMARY KEY, kind TEXT, name TEXT, created_at TEXT)")
             db.execute('CREATE TABLE IF NOT EXISTS deleted_cache_versions (version_id INTEGER PRIMARY KEY, mod_id TEXT NOT NULL)')
@@ -303,6 +304,7 @@ class WorkshopService:
     def connect(self):
         db = sqlite3.connect(self.database, timeout=30)
         try:
+            db.execute('PRAGMA busy_timeout=30000')
             with db:
                 yield db
         finally:
@@ -375,6 +377,8 @@ class WorkshopService:
         cfg = self.config() if self.config_path.exists() else dict(DEFAULT_CONFIG)
         allowed = set(DEFAULT_CONFIG)
         cfg.update({key: value for key, value in changes.items() if key in allowed})
+        if getattr(self, 'server_mode', False):
+            cfg['api_key'] = ''
         if cfg['api_format'] != 'openai':
             raise ValueError('试运行版支持 OpenAI 兼容的 Chat Completions 格式')
         url = urllib.parse.urlparse(cfg['base_url'])
@@ -468,14 +472,16 @@ class WorkshopService:
             self.task_context.job = previous or self.job
             self.task_context.config = None
 
-    def start(self, kind, action, identifier=None):
+    def start(self, kind, action, identifier=None, config_override=None):
         job = self._reserve(kind, identifier)
-        config = self.config()
+        config = dict(config_override) if config_override is not None else self.config()
         def run():
             self.task_context.job = job
             self.task_context.config = config
             try:
                 result = action()
+                if kind == 'translate' and getattr(self, 'server_mode', False):
+                    result['model'] = config['model']
                 with self.lock:
                     job['result'] = result
             except Exception as error:
@@ -487,6 +493,8 @@ class WorkshopService:
             finally:
                 with self.lock:
                     job['running'] = False
+                self.task_context.config = None
+                config.clear()
         threading.Thread(target=run, daemon=True).start()
         return job['id']
 
@@ -501,6 +509,8 @@ class WorkshopService:
     def scan(self, fetch=workshop_details):
         found, fingerprints = {}, {}
         libraries = ([self.data_dir / 'demo_steam'] if self.demo else steam_libraries(self.config()['steam_libraries']))
+        if getattr(self, 'server_mode', False):
+            libraries = [self.data_dir / 'uploaded_library']
         for library in libraries:
             content = library / 'steamapps/workshop/content'
             for appid, (game, game_title) in GAMES.items():
@@ -613,7 +623,7 @@ class WorkshopService:
             label = provider.strip() or f'翻译-{date}-{revision}'
             db.execute('INSERT INTO source_runs(kind,name,created_at) VALUES (?,?,?)', (kind, label, datetime.now().isoformat()))
         registry = json.loads(self.providers_path.read_text(encoding='utf-8'))
-        if kind == 'AI':
+        if kind == 'AI' and not getattr(self, 'server_mode', False):
             profile_name = self.config().get('config_name') or label
             registry.setdefault('profiles', {})[profile_name] = {**self.config(), 'config_name': profile_name, 'provider': self.config().get('provider') or label, 'saved_at': now()}
             registry['active'] = profile_name
@@ -1055,11 +1065,14 @@ class WorkshopService:
         return {'files': len(files), 'path': str(mod), 'version_id': int(version_id), 'aggregate':aggregate}
 
     def select_cache(self, identifier, enabled, version_id=None):
-        self.get_mod(identifier)
+        item = self.get_mod(identifier)
         self.cache.select(identifier, enabled, version_id)
-        self.get_mod(identifier)['cache_selection'] = self.cache.selection(identifier)
-        counts = self.analyze(identifier)
-        return {'counts': counts, 'selection': self.cache.selection(identifier)}
+        item['cache_selection'] = self.cache.selection(identifier)
+        counts = self.cache.refresh_selection(item)
+        if counts is not None:
+            item['counts'] = counts
+        self.persist_item(item)
+        return {'counts': counts, 'selection': item['cache_selection'], 'needs_scan': counts is None}
 
     def delete_cache_version(self, identifier, version_id):
         if type(version_id) is not int:
@@ -1261,16 +1274,139 @@ class AppServer(ThreadingHTTPServer):
     daemon_threads = True
     def __init__(self, address, service):
         self.service, self.token = service, secrets.token_urlsafe(32)
+        if getattr(service, 'server_mode', False):
+            from server_sessions import forget_saved_keys
+            forget_saved_keys(service)
+        self.login = None
+        self.sessions = {}
+        self.login_lock = threading.Lock()
+        self.visitor_lock = threading.Lock()
+        self.visitors = {}
+        self.login_attempts = []
+        self.admin = None
+        self.public_origin = ''
+        password = os.environ.get('TRANSLATOR_PASSWORD', '')
+        if not password:
+            cred_file = service.data_dir / 'server_access/credentials.json'
+            if cred_file.is_file():
+                try:
+                    password = json.loads(cred_file.read_text(encoding='utf-8')).get('password', '')
+                except (ValueError, OSError):
+                    password = ''
+        if getattr(service, 'server_mode', False):
+            if len(password) < 16:
+                raise ValueError('服务器模式需要至少 16 位的 TRANSLATOR_PASSWORD')
+            self.login = hashlib.sha256(password.encode()).digest()
+            self.public_origin = os.environ.get('TRANSLATOR_PUBLIC_ORIGIN', '').rstrip('/')
+            if self.public_origin and not re.fullmatch(r'https://[a-z0-9.-]+', self.public_origin):
+                raise ValueError('公网来源必须是 https://域名')
+        elif password:
+            self.login = hashlib.sha256(password.encode()).digest()
+        admin_name = os.environ.get('TRANSLATOR_ADMIN_USERNAME', '')
+        admin_hash = os.environ.get('TRANSLATOR_ADMIN_PASSWORD_HASH', '')
+        if admin_name or admin_hash:
+            if not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}', admin_name) or not re.fullmatch(r'[0-9a-f]{32}:[0-9a-f]{64}', admin_hash):
+                raise ValueError('管理员用户名或密码摘要格式无效')
+            self.admin = (admin_name, admin_hash)
         super().__init__(address, Handler)
 
 
 class Handler(BaseHTTPRequestHandler):
+    @property
+    def service(self):
+        from server_sessions import workspace
+        return workspace(self)
+
+    def is_dev_logged_in(self):
+        from http.cookies import SimpleCookie, CookieError
+        try:
+            cookie = SimpleCookie(self.headers.get('Cookie', ''))
+            session = cookie.get('translator_session')
+        except CookieError:
+            session = None
+        with self.server.login_lock:
+            return bool(session and self.server.sessions.get(session.value, 0) > time.time())
+
+    def login_required(self):
+        return False
+
+    def verify_dev_credentials(self, user, password):
+        valid = False
+        if self.server.login is not None:
+            valid = (secrets.compare_digest(user.encode(), b'translator') and
+                     secrets.compare_digest(hashlib.sha256(password.encode()).digest(), self.server.login))
+        if self.server.admin and secrets.compare_digest(user.encode(), self.server.admin[0].encode()):
+            salt, expected_hash = self.server.admin[1].split(':')
+            supplied_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), 310000).hex()
+            valid = secrets.compare_digest(supplied_hash, expected_hash)
+        return valid
+
+    def create_dev_session(self):
+        session = secrets.token_urlsafe(32)
+        with self.server.login_lock:
+            self.server.sessions = {key: expiry for key, expiry in self.server.sessions.items() if expiry > time.time()}
+            if len(self.server.sessions) >= 32:
+                self.server.sessions.pop(next(iter(self.server.sessions)))
+            self.server.sessions[session] = time.time() + 8 * 3600
+        secure = '; Secure' if self.server.public_origin and self.headers.get('X-Forwarded-Proto') == 'https' else ''
+        return f'translator_session={session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800{secure}'
+
+    def login_form(self):
+        expected = f'127.0.0.1:{self.server.server_port}'
+        allowed_origins = {'http://' + expected}
+        if self.server.public_origin:
+            allowed_origins.add(self.server.public_origin)
+        if (self.headers.get('Host') != expected or
+                self.headers.get('Origin', 'http://' + expected) not in allowed_origins):
+            return self.send(403, {'error': '登录来源无效'})
+        with self.server.login_lock:
+            self.server.login_attempts = [stamp for stamp in self.server.login_attempts if stamp > time.time() - 60]
+            if len(self.server.login_attempts) >= 10:
+                return self.send(429, {'error': '登录尝试过于频繁，请一分钟后重试'})
+            self.server.login_attempts.append(time.time())
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 4096:
+                raise ValueError()
+            raw = self.rfile.read(length).decode('utf-8')
+            if 'application/json' in self.headers.get('Content-Type', ''):
+                payload = json.loads(raw)
+                user = str(payload.get('username', ''))
+                password = str(payload.get('password', ''))
+            else:
+                form = urllib.parse.parse_qs(raw)
+                user = form.get('username', [''])[0]
+                password = form.get('password', [''])[0]
+        except (ValueError, UnicodeError):
+            return self.send(400, {'error': '登录请求无效'})
+        if not self.verify_dev_credentials(user, password):
+            return self.send(401, {'error': '开发者用户名或密码不正确'})
+        cookie_header = self.create_dev_session()
+        if 'application/json' in self.headers.get('Content-Type', ''):
+            data = json.dumps({'ok': True, 'dev_logged_in': True}, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header('Set-Cookie', cookie_header)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        self.send_response(303)
+        self.send_header('Set-Cookie', cookie_header)
+        self.send_header('Location', '/')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
     def log_message(self, *args):
         pass
 
     def send(self, status, body, content_type='application/json; charset=utf-8'):
         data = json.dumps(body, ensure_ascii=False).encode() if isinstance(body, (dict, list)) else body
         self.send_response(status)
+        if getattr(self, '_visitor_cookie', None):
+            self.send_header('Set-Cookie', self._visitor_cookie)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(data)))
         self.send_header('Cache-Control', 'no-store')
@@ -1287,8 +1423,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Host') != f'127.0.0.1:{self.server.server_port}':
             return self.send(403, {'error': '仅支持本机访问'})
         if self.path == '/':
+            if getattr(self.server.service, 'server_mode', False):
+                self.service
             page = (ROOT / 'workshop_ui.html').read_text(encoding='utf-8').replace('__APP_TOKEN__', self.server.token)
+            if getattr(self.server.service, 'server_mode', False):
+                page = page.replace('</html>', '<script src="/server_ui.js"></script></html>')
             return self.send(200, page.encode(), 'text/html; charset=utf-8')
+        if self.path == '/server_ui.js' and getattr(self.server.service, 'server_mode', False):
+            return self.send(200, (ROOT / 'server_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
         if self.path in ('/assets/app-icon.svg', '/favicon.ico'):
             name = 'assets/app-icon.ico' if self.path == '/favicon.ico' else 'assets/app-icon.svg'
             return self.send(200, (ROOT / name).read_bytes(), 'image/x-icon' if self.path == '/favicon.ico' else 'image/svg+xml')
@@ -1296,28 +1438,103 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, (ROOT / self.path.lstrip('/')).read_bytes(), 'text/javascript; charset=utf-8')
         if self.path == '/entry_browser_ui.js':
             return self.send(200, (ROOT / 'entry_browser_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
+        if self.path == '/tutorial_ui.js':
+            return self.send(200, (ROOT / 'tutorial_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
         if not self.authorized():
             return self.send(403, {'error': '访问令牌无效'})
         if self.path == '/api/state':
             from mod_export import documents_mod_root
-            service = self.server.service
-            return self.send(200, {'config': service.public_config(), 'profiles': service.profiles(), 'mods': list(service.inventory.values()),
+            service = self.service
+            dev_logged_in = self.is_dev_logged_in()
+            cfg = service.public_config()
+            if dev_logged_in:
+                cfg['developer_mode'] = True
+            is_server = getattr(service, 'server_mode', False)
+            if is_server:
+                cfg['has_api_key'] = False
+                if not dev_logged_in:
+                    cfg.update(provider='', config_name='', steam_libraries=[], developer_mode=False)
+            from server_sessions import contributions
+            return self.send(200, {'config': cfg, 'profiles': service.profiles() if not is_server or dev_logged_in else [], 'mods': list(service.inventory.values()),
+                                   'shared_translations': contributions(service) if is_server else [],
                                    'history': service.history(), 'analyzed_mod_ids': sorted(service.analyzed_mod_ids), 'job': service.status(), 'jobs': service.task_statuses(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
                                    'app_version': APP_VERSION, 'program_dir': str(program_directory()),
+                                   'dev_logged_in': dev_logged_in,
                                    'aggregate_directory':str(documents_mod_root(service))})
         self.send(404, {'error': '未找到'})
 
     def do_POST(self):
+        if self.path in ('/api/login', '/api/dev-login'):
+            return self.login_form()
+        if self.path == '/api/dev-logout':
+            if not self.authorized():
+                return self.send(403, {'error': '访问令牌无效'})
+            from http.cookies import SimpleCookie, CookieError
+            try:
+                cookie = SimpleCookie(self.headers.get('Cookie', ''))
+                session = cookie.get('translator_session')
+            except CookieError:
+                session = None
+            with self.server.login_lock:
+                if session:
+                    self.server.sessions.pop(session.value, None)
+            if self.server.service.config().get('developer_mode'):
+                try:
+                    self.server.service.save_config({'developer_mode': False})
+                except ValueError:
+                    pass
+            data = json.dumps({'ok': True, 'dev_logged_in': False}, ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header('Set-Cookie', 'translator_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0')
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if not self.authorized():
             return self.send(403, {'error': '访问令牌无效'})
-        service = self.server.service
+        service = self.service
         try:
+            if self.path.startswith('/api/upload-mod?') and getattr(service, 'server_mode', False):
+                from server_upload import upload_mod, MAX_UPLOAD
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= MAX_UPLOAD:
+                    raise ValueError('ZIP 大小必须在 1 字节至 32 MB 之间')
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                with service.operation('upload-mod', None):
+                    data = self.rfile.read(length)
+                    if len(data) != length:
+                        raise ValueError('上传未完成')
+                    result = upload_mod(service, data, query.get('appid', [''])[0], query.get('uid', [''])[0])
+                return self.send(200, result)
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= 65536:
                 raise ValueError('请求大小错误')
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError('请求格式错误')
+            if getattr(service, 'server_mode', False):
+                if self.path in ('/api/open', '/api/open-aggregate', '/api/open-generated-mod', '/api/pick-file', '/api/pick-folder'):
+                    raise ValueError('网页版不支持打开服务器本地窗口')
+                if self.path in ('/api/config', '/api/config-storage', '/api/profile', '/api/aggregate-config'):
+                    if not self.is_dev_logged_in():
+                        return self.send(403, {'error': '仅开发者登录后可保存配置'})
+                    if body.get('api_key'):
+                        raise ValueError('网页版不保存 API Key，请在翻译前填写')
+                if self.path == '/api/share-translation':
+                    from server_sessions import share
+                    return self.send(200, share(service, body))
+                if self.path == '/api/use-shared':
+                    from server_sessions import use_shared
+                    return self.send(200, use_shared(service, body))
+            if self.path in ('/api/workshop-lookup', '/api/workshop-download') and getattr(service, 'server_mode', False):
+                from server_workshop import lookup, download
+                item = lookup(service, body.get('link'))
+                if self.path == '/api/workshop-lookup' or item['downloaded']:
+                    return self.send(200, item)
+                job_id = service.start('download-mod', lambda: download(service, item))
+                return self.send(202, {**item, 'job_id': job_id})
             if self.path == '/api/entries':
                 item = service.get_mod(body['id'])
                 result = service.cache.browser.list(item['id'], body.get('status', 'all'), body.get('query', ''),
@@ -1376,7 +1593,11 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/translate':
                 identifier = body['id']
                 service.get_mod(identifier)
-                service.start('translate', lambda: service.translate(identifier), identifier)
+                config = None
+                if getattr(service, 'server_mode', False):
+                    from server_sessions import transient_config
+                    config = transient_config(service, body.get('api', {}))
+                service.start('translate', lambda: service.translate(identifier), identifier, config_override=config)
             elif self.path == '/api/restore':
                 identifier, version = body['id'], int(body['version_id'])
                 service.get_mod(identifier)
@@ -1398,6 +1619,8 @@ class Handler(BaseHTTPRequestHandler):
                 service.start('clear-translations', lambda: service.clear_translations(identifier), identifier)
             elif self.path == '/api/import':
                 identifier, chosen, provider = body['id'], body['path'], body.get('provider', '')
+                if getattr(service, 'server_mode', False) and not Path(chosen).resolve().is_relative_to(service.data_dir):
+                    raise ValueError('仅可导入当前工作区中的文件')
                 service.get_mod(identifier)
                 service.start('import', lambda: service.import_cache(identifier, chosen, provider), identifier)
             elif self.path == '/api/export':
@@ -1426,7 +1649,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not read_manifest(service, item):
                     raise ValueError('请先生成翻译 Mod')
                 if self.path == '/api/open-generated-mod':
-                    open_folder(root)
+                    open_folder(root.parent)
                     return self.send(200, {'ok':True})
                 path = root / (safe_id(item) + '.zip')
                 if path.is_symlink() or not path.is_file():
@@ -1563,7 +1786,9 @@ def main():
     parser.add_argument('--choose-import', choices=['file', 'folder'], help=argparse.SUPPRESS)
     parser.add_argument('--port', type=int, default=0)
     parser.add_argument('--no-browser', action='store_true')
+    parser.add_argument('--server-mode', action='store_true', help='个人服务器模式：密码登录、网页上传；仅通过 SSH 隧道访问')
     parser.add_argument('--data-dir', type=Path)
+    parser.add_argument('--documents-dir', type=Path, help='文档目录；生成至其 Paradox Interactive/<游戏>/mod 子目录')
     parser.add_argument('--demo', action='store_true', help='模拟 Mod 与模型回复，不调用 Steam 或付费接口')
     parser.add_argument('--startup-check', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--self-test', action='store_true', help='离线检查打包资源、翻译、数据库和文件恢复')
@@ -1575,6 +1800,9 @@ def main():
         self_test()
         return
     service = WorkshopService(args.data_dir, demo=args.demo)
+    service.server_mode = args.server_mode
+    if args.documents_dir:
+        service.documents_dir = args.documents_dir.expanduser().resolve()
     if args.startup_check:
         print(json.dumps({'python_ready_seconds': round(time.perf_counter()-_STARTUP_STARTED, 4), 'sdk_loaded': 'openai' in sys.modules}), flush=True)
         return

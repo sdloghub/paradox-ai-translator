@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew the translation workbench HTTPS certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/workshop-certbot/bin/certbot renew --quiet --no-random-sleep-on-renew --deploy-hook /usr/local/sbin/workshop-reload-nginx
+PrivateTmp=true
+UMask=0077
