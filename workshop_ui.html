@@ -309,6 +309,8 @@ dialog::backdrop{background:var(--backdrop)}
 .tutorial-skip-btn{padding:5px 10px;font-size:12px;color:var(--muted)}
 .tutorial-highlight{outline:3px solid var(--accent)!important;outline-offset:3px!important;box-shadow:0 0 0 6px var(--selected-bg)!important;position:relative;z-index:860}
 .upload-trigger-btn{padding:7px 12px;font-size:12px}
+
+.language-control{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);max-width:100%}.language-control select{width:auto;min-width:130px;margin:0}.header-controls #language_hint{max-width:340px;text-align:right;font-size:11px}@media(max-width:640px){.language-control{flex-wrap:wrap}.header-controls #language_hint{text-align:left}}
 </style>
 <header>
   <div>
@@ -317,6 +319,11 @@ dialog::backdrop{background:var(--backdrop)}
     <div class="sub">面向五款 Paradox 游戏的创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。</div>
   </div>
   <div class="header-controls">
+    <label class="language-control" for="workshop_language"><span>界面与翻译语言</span>
+      <select id="workshop_language" data-i18n-skip>
+        <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ru">Русский</option>
+      </select>
+    </label><div id="language_hint" class="sub" role="status"></div>
     <div class="theme-switcher" id="theme_switcher" role="group" aria-label="界面主题配色">
       <button type="button" class="theme-btn" data-theme-opt="light" aria-pressed="true"><span class="theme-dot" style="background:#4f46e5"></span>极简日间</button>
       <button type="button" class="theme-btn" data-theme-opt="dark" aria-pressed="false"><span class="theme-dot" style="background:#818cf8"></span>极简夜间</button>
@@ -423,7 +430,7 @@ dialog::backdrop{background:var(--backdrop)}
   </div>
 </dialog>
 <dialog id="confirmation" aria-labelledby="confirmation_title"><h2 id="confirmation_title">确认操作</h2><p id="confirmation_text" style="white-space:pre-line;line-height:1.8"></p><div class="row"><button id="cancel_action">取消</button><button class="primary" id="confirm_action">确认执行</button></div></dialog>
-<script src="/vendor/gsap.min.js"></script><script src="/vendor/ScrollTrigger.min.js"></script><script>
+<script src="/localization_ui.js"></script><script src="/vendor/gsap.min.js"></script><script src="/vendor/ScrollTrigger.min.js"></script><script>
 const token='__APP_TOKEN__';let state=null,selected=null,initialized=false,lastJob=null,steamWindow=null,activeGame=null,pickingImport=false;const games={st:'群星',hoi4:'钢铁雄心4',eu4:'欧陆风云4',ck3:'十字军之王3',vic3:'维多利亚3'};const $=id=>document.getElementById(id);
 
 function applyTheme(theme){

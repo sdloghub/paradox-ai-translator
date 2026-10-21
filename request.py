@@ -29,7 +29,9 @@ from collections import Counter
 
 _RULES_CACHE = None
 
-def findrule(game):
+def findrule(game, language=None):
+    from localization import normalize, current_language
+    language = normalize(language or current_language())
     """
     仅在首次调用时读取 rules.json，后续直接复用缓存，避免频繁 IO。
     """
@@ -40,8 +42,10 @@ def findrule(game):
             _RULES_CACHE = json.load(fi)
     if 'common' in _RULES_CACHE:
         context = _RULES_CACHE.get('games', {}).get(game, {})
-        return (_RULES_CACHE['common'] + '\n\n当前游戏：' + context.get('name', game)
-                + '\n' + context.get('guidance', '根据原文背景选择词汇，编码由程序处理。'))
+        common = _RULES_CACHE.get('languages', {}).get(language, {}).get('common', _RULES_CACHE['common'])
+        guidance = _RULES_CACHE.get('languages', {}).get(language, {}).get('games', {}).get(game, context.get('guidance', ''))
+        return (common + {'zh-CN':'\n\n当前游戏：', 'zh-TW':'\n\n目前遊戲：', 'ru':'\n\nИгра: '}[language] + context.get('name', game)
+                + '\n' + guidance)
     return _RULES_CACHE[game]
 #print(findrule("st"))
 # Match script variables, game icons, colour/format tokens and literal escapes.
@@ -91,9 +95,12 @@ def restore_tokens(text, tokens):
         text = text.replace(placeholder, original)
     return text
 
-def validation_error(original, translated):
-    if not is_token_only(original) and not re.search(r'[\u3400-\u9fff]', translated):
-        return '未返回中文译文，不能将英文回复作为完成缓存'
+def validation_error(original, translated, language=None):
+    from localization import current_language
+    language = language or current_language()
+    pattern = r'[\u0400-\u052f]' if language == 'ru' else r'[\u3400-\u9fff]'
+    if not is_token_only(original) and not re.search(pattern, translated):
+        return '未返回目标语言译文，不能将英文回复作为完成缓存'
     before, after = Counter(TOKENS.findall(original)), Counter(TOKENS.findall(output_text(translated)))
     details = []
     for label, tokens in (('缺少', before - after), ('新增', after - before)):
@@ -105,14 +112,16 @@ def is_token_only(text):
     """若文本为空白，或剔除全部游戏标识符后不再包含任何英文字母，则视为仅剩标识符/已翻译。"""
     return not isinstance(text, str) or not re.search(r'[A-Za-z]', TOKENS.sub('', text))
 
-def valid_translation(original, translated):
+def valid_translation(original, translated, language=None):
+    from localization import current_language
+    language = language or current_language()
     if not isinstance(original, str) or not isinstance(translated, str):
         return False
     if not original.strip():
         return translated == original
     return (bool(translated.strip())
             and "---SEPARATOR---" not in translated
-            and (is_token_only(original) or bool(re.search(r'[\u3400-\u9fff]', translated)))
+            and (is_token_only(original) or bool(re.search(r'[\u0400-\u052f]' if language == 'ru' else r'[\u3400-\u9fff]', translated)))
             and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(output_text(translated))))
 
 def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40, config=None, progress=None):
@@ -141,7 +150,8 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
     client = OpenAI(api_key=api_key, base_url=config.get("base_url", "https://api.deepseek.com"),
                     timeout=90, max_retries=0)
     model = config.get("model", "deepseek-chat")
-    rule = findrule(game)
+    language = config.get('target_language', 'zh-CN')
+    rule = findrule(game, language)
     separator = "\n---SEPARATOR---\n"
 
     def failed(original, error):
@@ -182,7 +192,7 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
             logging.warning("翻译请求失败，条目保留原文且不缓存 (%s)", type(error).__name__)
             return [failed(text, type(error).__name__) for text in batch]
         parts = content.split(separator)
-        if len(parts) == len(batch) and all(valid_translation(original, part.strip()) for part, original in zip(parts, batch)):
+        if len(parts) == len(batch) and all(valid_translation(original, part.strip(), language) for part, original in zip(parts, batch)):
             if game == 'hoi4':
                 audit_hoi4_compliance(parts)
             return [{"text": output_text(part.strip()), "success": True, "error": None} for part in parts]
@@ -200,10 +210,10 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
                             continue
                     else:
                         text = translate_text(original).strip()
-                    if valid_translation(original, text):
+                    if valid_translation(original, text, language):
                         break
                 else:
-                    results.append(failed(original, validation_error(original, text)))
+                    results.append(failed(original, validation_error(original, text, language)))
                     continue
                 if game == 'hoi4':
                     audit_hoi4_compliance(text)

@@ -52,7 +52,7 @@ class BugBranchTests(unittest.TestCase):
 
     def test_common_prompt_keeps_distinct_game_guidance(self):
         rules = json.loads((Path(request.__file__).parent / 'rules.json').read_text('utf-8'))
-        self.assertEqual(set(rules), {'common', 'games'})
+        self.assertEqual(set(rules), {'common', 'games', 'languages'})
         with patch.object(request, '_RULES_CACHE', None):
             for game in ('st', 'hoi4', 'eu4', 'ck3', 'vic3', 'para'):
                 prompt = request.findrule(game)

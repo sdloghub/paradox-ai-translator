@@ -84,7 +84,7 @@ def _parse_json_candidates(raw_text):
     if not isinstance(payload, dict):
         raise ValueError('缓存 JSON 必须是对象')
     if payload.get('format') == FORMAT:
-        return [{**entry, 'mod_id': payload.get('mod_id')} for entry in payload.get('entries', []) if isinstance(entry, dict)]
+        return [{**entry, 'target_language': payload.get('target_language', 'zh-CN'), 'mod_id': payload.get('mod_id')} for entry in payload.get('entries', []) if isinstance(entry, dict)]
     result = []
     for key, value in payload.items():
         if isinstance(value, dict) and isinstance(value.get('source_hash'), str):
@@ -94,14 +94,17 @@ def _parse_json_candidates(raw_text):
 
 def _parse_yml_candidates(filename, data, game):
     text = data.decode('utf-8-sig')
-    chinese_header = bool(re.search(r'^\s*l_simp_chinese\s*:', text, re.M))
+    from localization import current_language
+    language = current_language()
+    target_header = 'russian' if language == 'ru' else 'simp_chinese'
+    chinese_header = bool(re.search(r'^\s*l_' + target_header + r'\s*:', text, re.M))
     result = []
     for entry in entries({str(filename): data}, game, strict=False):
         if not entry['text'].strip():
             continue
-        if re.search(r'[\u3400-\u9fff]', entry['text']) or (chinese_header and request.is_token_only(entry['text'])):
+        if re.search(r'[\u0400-\u052f]' if language == 'ru' else r'[\u3400-\u9fff]', entry['text']) or (chinese_header and request.is_token_only(entry['text'])):
             if chinese_header or game == 'eu4' or not re.search(r'[A-Za-z]{2,}', request.TOKENS.sub('', entry['text'])):
-                result.append(entry)
+                result.append({**entry, 'target_language': language})
     return result
 
 
@@ -137,8 +140,8 @@ def candidates(path, game):
             if isinstance(sh, str):
                 ck = canonical_key(str(item.get('key', '')))
                 if item.get('source_file'):
-                    hash_by_file_key[(comparable_file(item['source_file']), ck)] = (sh, item.get('mod_id'))
-                hash_by_key.setdefault(ck, set()).add((sh, item.get('mod_id')))
+                    hash_by_file_key[(comparable_file(item['source_file']), ck)] = (sh, item.get('mod_id'), item.get('target_language', 'zh-CN'))
+                hash_by_key.setdefault(ck, set()).add((sh, item.get('mod_id'), item.get('target_language', 'zh-CN')))
         for item in yml_entries:
             if not item.get('source_hash'):
                 ck = canonical_key(str(item.get('key', '')))
@@ -148,6 +151,7 @@ def candidates(path, game):
                     match = next(iter(hash_by_key[ck]))
                 if match:
                     item['source_hash'] = match[0]
+                    item['target_language'] = match[2]
                     if match[1] and not item.get('mod_id'):
                         item['mod_id'] = match[1]
     return json_entries + yml_entries
@@ -219,8 +223,8 @@ class ModCache:
                 name, key, h = entry['source_file'], entry['key'], digest(entry['text'])
                 text = local_entries.get(name, {}).get(entry['line'])
                 if (request.valid_translation(entry['text'], text)
-                        and (re.search(r'[\u3400-\u9fff]', text) or request.is_token_only(entry['text']))
-                        and h in known.get((name, canonical_key(key), text), {h})):
+                        and request.valid_translation(entry['text'], text)
+                        and h in known.get((name, canonical_key(key), text), set() if self.service.target_language == 'zh-TW' else {h})):
                     if (name,key,h) not in present:
                         rows.append((name,key,h,text,stored_origins.get((name,key,h,text), '本机中文')))
                         present.add((name,key,h))
@@ -291,7 +295,10 @@ class ModCache:
             key = canonical_key(entry['key'])
             source_counts[key] = source_counts.get(key, 0) + 1
         by_key = {}
+        from localization import current_language
         for translated in translations:
+            if translated.get('target_language', 'zh-CN') != current_language():
+                continue
             by_key.setdefault(canonical_key(str(translated.get('key', ''))), []).append(translated)
         with self.service.connect() as db:
             for entry in source_entries:
@@ -468,7 +475,7 @@ class ModCache:
     def export(self, item):
         with self.service.connect() as db:
             rows = db.execute('''SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=?''', (item['id'],)).fetchall()
-        return {'format': FORMAT, 'mod_id': item['id'], 'title': item['title'],
+        return {'format': FORMAT, 'target_language': self.service.target_language, 'mod_id': item['id'], 'title': item['title'],
                 'entries': [{'source_file': f, 'key': k, 'source_hash': h, 'text': t, 'origin': o} for f, k, h, t, o in rows]}
 
     def export_package(self, item):
@@ -476,7 +483,7 @@ class ModCache:
         sources = self.service.original_sources(item)
         invalid_keys = {issue["key"] for issue in duplicate_issues(entries(sources,item["game"],strict=False))}
         # Ensure any local Chinese files in the Mod directory are indexed before exporting.
-        if sources:
+        if sources and self.service.target_language != 'zh-TW':
             self.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文')
         cache_payload = self.export(item)
         cache_filename = f"{item['id'].replace(':', '-')}.cache.json"
@@ -501,7 +508,7 @@ class ModCache:
                         text = re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', text)
                         line = match['prefix'] + '"' + text + '"' + match['suffix'] + (match['newline'] or '')
                 elif item['game'] != 'eu4' and line.lstrip('\ufeff \t').startswith('l_english:'):
-                    line = line.replace('l_english:', 'l_simp_chinese:', 1)
+                    line = line.replace('l_english:', 'l_' + __import__('localization').slot() + ':', 1)
                 lines.append(line)
             rendered = ''.join(lines).encode('utf-8')
             if not rendered.startswith(b'\xef\xbb\xbf'):

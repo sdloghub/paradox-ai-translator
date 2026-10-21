@@ -44,7 +44,7 @@ def workspace(handler):
     with server.visitor_lock:
         # Inactive workspaces expire after a day. Active tasks are never removed.
         for key, (service, seen) in list(server.visitors.items()):
-            if time.time() - seen > 86400 and not service.busy():
+            if time.time() - seen > 86400 and not service.busy() and not any(s.busy() for s in getattr(service, 'language_workspaces', {}).values()):
                 shutil.rmtree(service.data_dir)
                 del server.visitors[key]
         if token not in server.visitors:
@@ -96,7 +96,9 @@ def transient_config(service, body):
 
 def public_database(service):
     root = getattr(service, 'server_root', service)
-    db = sqlite3.connect(root.data_dir / 'shared-translations.sqlite3', timeout=30)
+    language = getattr(service, 'target_language', 'zh-CN')
+    filename = 'shared-translations.sqlite3' if language == 'zh-CN' else f'shared-translations-{language}.sqlite3'
+    db = sqlite3.connect(root.data_dir / filename, timeout=30)
     db.row_factory = sqlite3.Row
     db.execute('''CREATE TABLE IF NOT EXISTS contributions (
         id INTEGER PRIMARY KEY, mod_id TEXT NOT NULL, title TEXT NOT NULL,

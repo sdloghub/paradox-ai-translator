@@ -4,10 +4,10 @@ import os
 root = Path(SPECPATH).parent
 analysis = Analysis(
     [str(root / 'workshop_app.py')], pathex=[str(root)], binaries=[],
-    datas=[(str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.'),
+    datas=[(str(root / 'localization_ui.js'), '.'), (str(root / 'ui_languages.json'), '.'), (str(root / 'workshop_ui.html'), '.'), (str(root / 'rules.json'), '.'),
            (str(root / 'entry_browser_ui.js'), '.'), (str(root / 'tutorial_ui.js'), '.'),
            (str(root / 'vendor'), 'vendor'), (str(root / 'assets'), 'assets')],
-    hiddenimports=['paradox', 'request', 'openai', 'winreg', 'translation_cache', 'aggregate_export', 'mod_export', 'tkinter.filedialog'],
+    hiddenimports=['localization', 'paradox', 'request', 'openai', 'winreg', 'translation_cache', 'aggregate_export', 'mod_export', 'tkinter.filedialog'],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=['pandas', 'numpy', 'scipy', 'matplotlib', 'PIL', 'IPython', 'torch', 'sympy'],
     noarchive=False,

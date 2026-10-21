@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.21-sharing.1'
+APP_VERSION = '2026.10.21-languages.1'
 
 
 def program_directory():
@@ -179,11 +179,13 @@ def english_files(mod_path):
 
 
 def target_path(name, game):
+    from localization import slot
+    target_slot = slot()
     path = PurePosixPath(name)
     if game == 'eu4':
         return path.as_posix()
-    parts = ['simp_chinese' if part == 'english' else part for part in path.parts]
-    parts[-1] = parts[-1].replace('l_english', 'l_simp_chinese')
+    parts = [target_slot if part == 'english' else part for part in path.parts]
+    parts[-1] = parts[-1].replace('l_english', 'l_' + target_slot)
     return PurePosixPath(*parts).as_posix()
 
 
@@ -194,8 +196,15 @@ def serialized_io(function):
     return wrapped
 
 
+from localization import language_bound
+
+
+@language_bound
 class WorkshopService:
-    def __init__(self, data_dir=None, demo=False, program_dir=None):
+    def __init__(self, data_dir=None, demo=False, program_dir=None, target_language="zh-CN"):
+        from localization import normalize
+        self.target_language = normalize(target_language)
+        self.language_lock = threading.RLock()
         self.io_lock = threading.RLock()
         self.task_context = threading.local()
         self.demo = demo
@@ -270,7 +279,8 @@ class WorkshopService:
         self.database.chmod(0o600)
         from translation_cache import ModCache
         self.cache = ModCache(self)
-        self.load_completed_seed()
+        if self.target_language == 'zh-CN':
+            self.load_completed_seed()
         if demo:
             self.setup_demo()
         with self.connect() as db:
@@ -297,8 +307,15 @@ class WorkshopService:
 
     @staticmethod
     def demo_translate(texts, game, already, total):
-        known = {'A new beginning': '新的开始', 'Gain $VALUE$ political power.': '获得 $VALUE$ 政治点数。'}
-        return [{'text': known.get(text, '演示译文：' + text), 'success': True, 'error': None} for text in texts]
+        from localization import current_language
+        language = current_language()
+        known = {
+            'zh-CN': ('新的开始', '获得 $VALUE$ 政治点数。', '演示译文：'),
+            'zh-TW': ('新的開始', '獲得 $VALUE$ 政治點數。', '示範譯文：'),
+            'ru': ('Новое начало', 'Получить $VALUE$ политической власти.', 'Пример перевода: '),
+        }[language]
+        translations = dict(zip(('A new beginning', 'Gain $VALUE$ political power.'), known[:2]))
+        return [{'text': translations.get(text, known[2] + text), 'success': True, 'error': None} for text in texts]
 
     @contextmanager
     def connect(self):
@@ -312,7 +329,9 @@ class WorkshopService:
 
     def config(self):
         snapshot = getattr(self.task_context, 'config', None)
-        return dict(snapshot) if snapshot is not None else {**DEFAULT_CONFIG, **json.loads(self.config_path.read_text(encoding='utf-8'))}
+        cfg = dict(snapshot) if snapshot is not None else {**DEFAULT_CONFIG, **json.loads(self.config_path.read_text(encoding='utf-8'))}
+        cfg['target_language'] = self.target_language
+        return cfg
 
     def public_config(self):
         cfg = self.config()
@@ -447,7 +466,11 @@ class WorkshopService:
                        or (j['mod_id'] is None and j['kind'] != 'scan')) for j in self.jobs.values())
 
     def _reserve(self, kind, identifier):
-        with self.lock:
+        family = getattr(self, 'language_base', self)
+        with family.language_lock, self.lock:
+            others = [family, *getattr(family, 'language_workspaces', {}).values()]
+            if any(s is not self and s.busy() for s in others):
+                raise ValueError('A task is running in another language; wait before starting a new task / 另一语言的任务尚未完成')
             conflict = self.jobs.get('__global__', {}).get('running', False) if kind == 'scan' else self.busy(identifier)
             if conflict:
                 raise ValueError('此 Mod 正在执行任务，请等待完成' if identifier else '请等待当前任务完成后刷新目录')
@@ -508,7 +531,7 @@ class WorkshopService:
 
     def scan(self, fetch=workshop_details):
         found, fingerprints = {}, {}
-        libraries = ([self.data_dir / 'demo_steam'] if self.demo else steam_libraries(self.config()['steam_libraries']))
+        libraries = ([getattr(self, 'demo_library', self.data_dir / 'demo_steam')] if self.demo else steam_libraries(self.config()['steam_libraries']))
         if getattr(self, 'server_mode', False):
             libraries = [self.data_dir / 'uploaded_library']
         for library in libraries:
@@ -862,7 +885,7 @@ class WorkshopService:
         from translation_cache import candidates
         item = self.get_mod(identifier)
         sources = self.original_sources(item)
-        imported = self.cache.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文')
+        imported = self.cache.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文') if self.target_language != 'zh-TW' else {'imported': 0, 'rejected': 0}
         self.cache.sync_workspace(item, sources, collect=False)
         item['cache_selection'] = self.cache.selection(identifier)
         item['counts'] = self.cache.stats(item, sources)
@@ -1320,7 +1343,8 @@ class Handler(BaseHTTPRequestHandler):
     @property
     def service(self):
         from server_sessions import workspace
-        return workspace(self)
+        from localization import workspace as language_workspace
+        return language_workspace(workspace(self), self.headers.get('X-Translation-Language', 'zh-CN'))
 
     def is_dev_logged_in(self):
         from http.cookies import SimpleCookie, CookieError
@@ -1425,6 +1449,9 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get('Host') == expected and secrets.compare_digest(self.headers.get('X-App-Token', ''), self.server.token)
 
     def do_GET(self):
+        from localization import LANGUAGES
+        if self.headers.get('X-Translation-Language', 'zh-CN') not in LANGUAGES:
+            return self.send(400, {'error': 'Unsupported language'})
         if self.headers.get('Host') != f'127.0.0.1:{self.server.server_port}':
             return self.send(403, {'error': '仅支持本机访问'})
         if self.path == '/':
@@ -1441,6 +1468,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, (ROOT / name).read_bytes(), 'image/x-icon' if self.path == '/favicon.ico' else 'image/svg+xml')
         if self.path in ('/vendor/gsap.min.js', '/vendor/ScrollTrigger.min.js'):
             return self.send(200, (ROOT / self.path.lstrip('/')).read_bytes(), 'text/javascript; charset=utf-8')
+        if self.path in ('/localization_ui.js', '/ui_languages.json'):
+            content_type = 'application/json; charset=utf-8' if self.path.endswith('.json') else 'text/javascript; charset=utf-8'
+            return self.send(200, (ROOT / self.path.lstrip('/')).read_bytes(), content_type)
         if self.path == '/entry_browser_ui.js':
             return self.send(200, (ROOT / 'entry_browser_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
         if self.path == '/tutorial_ui.js':
@@ -1464,11 +1494,14 @@ class Handler(BaseHTTPRequestHandler):
                                    'shared_translations': contributions(service) if is_server else [],
                                    'history': service.history(), 'analyzed_mod_ids': sorted(service.analyzed_mod_ids), 'job': service.status(), 'jobs': service.task_statuses(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
                                    'app_version': APP_VERSION, 'program_dir': str(program_directory()),
-                                   'dev_logged_in': dev_logged_in,
+                                   'dev_logged_in': dev_logged_in, 'target_language': service.target_language,
                                    'aggregate_directory':str(documents_mod_root(service))})
         self.send(404, {'error': '未找到'})
 
     def do_POST(self):
+        from localization import LANGUAGES
+        if self.headers.get('X-Translation-Language', 'zh-CN') not in LANGUAGES:
+            return self.send(400, {'error': 'Unsupported language'})
         if self.path in ('/api/login', '/api/dev-login'):
             return self.login_form()
         if self.path == '/api/dev-logout':

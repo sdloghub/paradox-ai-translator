@@ -190,7 +190,8 @@ def source_text(match, game):
 
 def output_name(local_path, game):
     path = Path(local_path)
-    return path if game == 'eu4' else path.with_name(path.name.replace('l_english', 'l_simp_chinese'))
+    from localization import slot
+    return path if game == 'eu4' else path.with_name(path.name.replace('l_english', 'l_' + slot()))
 
 def extract(path, mde, issues=None):
     with Path(path).open(encoding='utf-8-sig', newline='') as source:
@@ -246,7 +247,7 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None, duplicate
                 text = re.sub(r'(?<!\\)((?:\\\\)*)"', r'\1\\"', text)
                 line = match['prefix'] + '"' + text + '"' + match['suffix'] + (match['newline'] or '')
             elif mde != 'eu4' and line.lstrip('\ufeff \t').startswith('l_english:'):
-                line = line.replace('l_english:', 'l_simp_chinese:', 1)
+                line = line.replace('l_english:', 'l_' + __import__('localization').slot() + ':', 1)
             lines.append(line)
     atomic_write(dst, ''.join(lines))
 
