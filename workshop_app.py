@@ -962,13 +962,14 @@ class WorkshopService:
         failures = 0
         issues = []
         translated = {}
+        shared_translations = {}
         with tempfile.TemporaryDirectory(prefix='output-', dir=workspace) as staging_dir:
             staging = Path(staging_dir)
             for index, name in enumerate(sources, 1):
                 self.log(f'文件 {index}/{len(sources)}：{name}')
                 relative = Path(item['game']) / name
                 file_issues = []
-                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues, duplicate_keys=duplicate_keys)
+                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues, duplicate_keys=duplicate_keys, shared_translations=shared_translations)
                 issues.extend({**problem, 'file': name, 'original_file': str(Path(item['path']) / name)} for problem in file_issues)
                 output = staging / paradox.output_name(relative, item['game'])
                 data = output.read_bytes()

@@ -76,6 +76,25 @@ class CacheIntegrationTests(unittest.TestCase):
         self.assertEqual(result['error_lines'], 0)
         self.assertEqual(self.item['counts']['deployed'], 2)
 
+    def test_identical_duplicates_merge_and_translate_all_locations(self):
+        self.source.write_text('l_english:\n same:0 "First"\n same:1 "First"\n', encoding='utf-8')
+        other = self.source.with_name('other_l_english.yml')
+        other.write_text('l_english:\n same:0 "First"\n', encoding='utf-8')
+        counts = self.service.analyze(self.identifier)
+        self.assertEqual(counts['parse_errors'], 0)
+        self.assertEqual(counts['total'], 1)
+        self.assertEqual(counts['untranslated'], 1)
+        translator = Mock(side_effect=lambda texts, *args: [
+            {'text': '第一', 'success': True} for text in texts])
+        result = self.service.translate(self.identifier, translator=translator)
+        self.assertEqual(result['error_lines'], 0)
+        self.assertEqual(sum(len(call.args[0]) for call in translator.call_args_list), 1)
+        self.assertEqual(self.item['counts']['total'], 1)
+        self.assertEqual(self.item['counts']['deployed'], 1)
+        outputs = [self.mod / app.target_path(str(path.relative_to(self.mod)), 'hoi4')
+                   for path in (self.source, other)]
+        self.assertEqual(sum(path.read_text('utf-8-sig').count('第一') for path in outputs), 3)
+
     def test_duplicates_across_files_and_versions_are_all_reported(self):
         self.source.write_text('l_english:\n same:0 "First"\n', encoding='utf-8')
         other = self.source.with_name('other_l_english.yml')

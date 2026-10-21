@@ -250,7 +250,7 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None, duplicate
             lines.append(line)
     atomic_write(dst, ''.join(lines))
 
-def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None, duplicate_keys=()):
+def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None, duplicate_keys=(), shared_translations=None):
     import hashlib
     import json
     import logging
@@ -285,24 +285,39 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
         logging.warning('缓存损坏，重新翻译：%s', cache_path)
         cache = {}
     tran, pending = {}, []
+    logical_entries = {}
+    shared_translations = {} if shared_translations is None else shared_translations
     for key, text in entries:
         digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
         cached = cached_entry(cache, key, text)
+        shared = shared_translations.get((key.split(':', 1)[0].strip(), text))
+        if shared is not None:
+            cached = {'source_hash': digest, 'text': shared}
         valid = isinstance(cached, dict) and cached.get('source_hash') == digest and isinstance(cached.get('text'), str) and request.valid_translation(text, cached['text'])
         blank = not text.strip()
         token_only = not blank and request.is_token_only(text)
         if token_only and not valid:
             store_cached_entry(cache, key, text, text)
-        tran[(key, text)] = Paradox_data(key, request.output_text(cached['text']) if valid else text, int(blank or token_only or valid))
+        identity = (key.split(':', 1)[0].strip(), text)
+        if identity not in logical_entries:
+            logical_entries[identity] = Paradox_data(key, request.output_text(cached['text']) if valid else text, int(blank or token_only or valid))
+        elif valid and not logical_entries[identity].vis:
+            logical_entries[identity].word = request.output_text(cached['text'])
+            logical_entries[identity].vis = 1
+        tran[(key, text)] = logical_entries[identity]
+    seen_pending = set()
     for key, item in tran.items():
-        if not item.vis:
+        if item.vis:
+            shared_translations[(key[0].split(':', 1)[0].strip(), key[1])] = item.word
+        if not item.vis and id(item) not in seen_pending:
+            seen_pending.add(id(item))
             pending.append(key)
-    successful = len(tran) - len(pending)
+    successful = len(logical_entries) - len(pending)
     failures = 0
     for offset in range(0, len(pending), 150):
         keys = pending[offset:offset + 150]
         try:
-            results = translator([tran[key].word for key in keys], mde, successful, len(tran))
+            results = translator([tran[key].word for key in keys], mde, successful, len(logical_entries))
             if len(results) != len(keys):
                 raise ValueError('请求结果数量与输入不一致')
         except ValueError:
@@ -313,6 +328,7 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
             if result['success'] and request.valid_translation(tran[key].word, result['text']):
                 tran[key].word, tran[key].vis = request.output_text(result['text']), 1
                 store_cached_entry(cache, key[0], key[1], result['text'])
+                shared_translations[(key[0].split(':', 1)[0].strip(), key[1])] = result['text']
                 successful += 1
             else:
                 failures += 1
@@ -322,5 +338,9 @@ def translate_para(local_path, mde, output_root=None, project_root=None, transla
                         issues.append({'file': str(local_path), 'line': number, 'original_line': original_line, 'reason': '翻译失败或返回格式异常；已保留英文：' + detail})
         # Save each completed segment independently of final publication.
         atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
+    for (key, original), item in tran.items():
+        if item.vis:
+            store_cached_entry(cache, key, original, item.word)
+    atomic_write(cache_path, json.dumps(cache, ensure_ascii=False, indent=2))
     outputs(local_path, tran, mde, output_root, project_root, duplicate_keys)
     return failures

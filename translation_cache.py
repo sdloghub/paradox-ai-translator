@@ -37,13 +37,13 @@ def canonical_key(key):
 
 
 def duplicate_issues(rows):
-    """Every occurrence is an error, including repeats in another source file."""
+    """Only repeated keys with conflicting English are errors."""
     groups = {}
     for row in rows:
         groups.setdefault(canonical_key(row['key']), []).append(row)
     result = []
     for key, group in groups.items():
-        if len(group) < 2:
+        if len({row['text'] for row in group}) < 2:
             continue
         locations = '、'.join(f"{row['source_file']} 第 {row['line']} 行" for row in group)
         for row in group:
@@ -380,6 +380,8 @@ class ModCache:
         issues.extend(duplicates)
         invalid = {(issue['file'], issue['line']) for issue in duplicates}
         current = [entry for entry in current if (entry['source_file'], entry['line']) not in invalid]
+        # One logical entry per key and exact English, across source files.
+        current = list({(canonical_key(e['key']), e['text']): e for e in reversed(current)}.values())
         skipped_blank = sum(not entry['text'].strip() for entry in current)
         current = [entry for entry in current if entry['text'].strip()]
         translated = needs_update = 0
