@@ -11,7 +11,7 @@
     },
     "hoi4": {
       "name": "钢铁雄心4 Hearts of Iron IV",
-      "guidance": "钢铁雄心4：军事、工业与政治文本正式而简明；事件文本保持其历史或架空设定，不用现实历史纠正 Mod。National Focus 为国策，Focus Tree 为国策树，Division 为师，Manpower 为人力，Political Power 为政治点数。Subject 不一律译成傀儡，按关系选择附庸或傀儡；Support、Army、State 等多义词根据上下文区分。"
+      "guidance": "钢铁雄心4：军事、工业与政治文本正式而简明；事件文本保持其历史或架空设定，不用现实历史纠正 Mod。National Focus 为国策，Focus Tree 为国策树，Division 为师，Manpower 为人力，Political Power 为政治点数。Subject 不一律译成傀儡，按关系选择附庸或傀儡；Support、Army、State 等多义词根据上下文区分。\n合规审核要求：钢铁雄心4模组翻译内容必须严格遵守中国法律法规。若待翻译原文或译文涉及分裂国家、破坏国家统一、颠覆国家政权、宣扬恐怖主义/极端主义/邪教组织或违法违规政治宣传，严禁继续翻译，必须直接且仅输出 __ILLEGAL_CONTENT_ABORT__。"
     },
     "eu4": {
       "name": "欧陆风云4 Europa Universalis IV",

@@ -294,21 +294,27 @@ dialog::backdrop{background:var(--backdrop)}
 .task-list button{font-size:12px;text-align:left}
 .workflow span[data-workflow-step]{cursor:pointer;transition:border-color .15s,background .15s}
 .workflow span[data-workflow-step]:hover{border-color:var(--accent);color:var(--accent)}
-.tutorial-sidebar{position:fixed;bottom:20px;right:20px;width:min(360px,calc(100vw - 40px));max-height:70vh;z-index:850;background:var(--surface);color:var(--ink);border-left:1px solid var(--line);padding:20px;overflow-y:auto;box-shadow:-8px 0 28px rgba(0,0,0,.14);display:flex;flex-direction:column;gap:14px}
+.card{border-radius:12px;box-shadow:0 4px 20px -2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.03)}
+.eyebrow-slogan{font-size:11px;font-weight:500;padding:2px 9px;border-radius:999px;background:var(--purple-bg);color:var(--purple-fg);border:1px solid var(--purple-border)}
+.lookup-actions{display:flex;gap:10px;align-items:center;margin-top:12px;margin-bottom:4px;flex-wrap:wrap}
+.tutorial-sidebar{position:fixed;bottom:24px;right:24px;width:min(380px,calc(100vw - 32px));max-height:76vh;z-index:850;background:var(--surface);color:var(--ink);border:2px solid var(--selected-border);border-radius:14px;padding:0;overflow:hidden;box-shadow:0 20px 45px -10px rgba(15,23,42,.26),0 0 0 1px var(--line);display:flex;flex-direction:column}
+.tutorial-header{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--surface-subtle);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tutorial-body{padding:18px 20px;overflow-y:auto}
+.tutorial-body h3{margin:0 0 8px;font-size:15px;font-weight:650;color:var(--ink)}
+.tutorial-body p{margin:0;font-size:13px;line-height:1.75;color:var(--muted)}
+.tutorial-footer{padding:12px 18px;border-top:1px solid var(--line);background:var(--surface-subtle);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tutorial-dots{display:flex;gap:5px;align-items:center}
+.tutorial-dot{width:7px;height:7px;border-radius:999px;background:var(--line-strong);transition:all .2s}
+.tutorial-dot.active{width:18px;background:var(--accent)}
 .tutorial-skip-btn{padding:5px 10px;font-size:12px;color:var(--muted)}
-.tutorial-track{display:flex;flex-direction:column;gap:6px;margin:4px 0}
-.tutorial-step-pill{width:100%;text-align:left;padding:8px 12px;border-radius:6px;font-size:12px;display:flex;align-items:center;justify-content:space-between}
-.tutorial-step-pill.active{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
-.tutorial-step-pill.optional{border-style:dashed}
-.tutorial-card{background:var(--surface-subtle);border:1px solid var(--line);border-radius:6px;padding:16px}
 .tutorial-highlight{outline:3px solid var(--accent)!important;outline-offset:3px!important;box-shadow:0 0 0 6px var(--selected-bg)!important;position:relative;z-index:860}
 .upload-trigger-btn{padding:7px 12px;font-size:12px}
 </style>
 <header>
   <div>
-    <div class="eyebrow" style="display:flex;align-items:center;gap:10px"><img src="/assets/app-icon.svg" width="32" height="32" alt="Workshop Translator 图标">Workshop Translator</div>
-    <h1>你的模组，本地翻译工作台。</h1>
-    <div class="sub">本地扫描 · 缓存续译 · 中文备份与恢复</div>
+    <div class="eyebrow" style="display:flex;align-items:center;gap:10px"><img src="/assets/app-icon.svg" width="36" height="36" alt="Paradox AI Translator 图标"><span>Paradox AI Translator</span><span class="eyebrow-slogan">Your world, Your word</span></div>
+    <h1>Paradox AI Translator</h1>
+    <div class="sub">面向五款 Paradox 游戏的创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。</div>
   </div>
   <div class="header-controls">
     <div class="theme-switcher" id="theme_switcher" role="group" aria-label="界面主题配色">
@@ -407,7 +413,7 @@ dialog::backdrop{background:var(--backdrop)}
   <div class="row"><h2 id="dev_login_title" class="grow">开发者登录</h2><button id="close_dev_login" type="button">关闭</button></div>
   <div class="sub">登录后开启开发者功能并隐藏新手教程弹窗；未登录仍可正常使用基础工作台。</div>
   <label for="dev_username">开发者账号</label>
-  <input id="dev_username" placeholder="输入开发者用户名（如 donmaid / translator）" autocomplete="username">
+  <input id="dev_username" placeholder="输入开发者用户名" autocomplete="username">
   <label for="dev_password">开发者密码</label>
   <input id="dev_password" type="password" placeholder="输入开发者密码" autocomplete="current-password">
   <div id="dev_login_status" class="sub" style="margin-top:8px;color:var(--err-fg)" role="status"></div>
@@ -499,9 +505,11 @@ const expandedHistoryMods=new Set();
 function renderHistory(){const mod=state.mods.find(m=>m.id===selected);const ready=!!mod&&(state.analyzed_mod_ids||[]).includes(mod.id)&&mod.scan_state==='已扫描'&&!mod.counts?.error;$('history_panel').hidden=!ready;const entries=ready?(state.history||[]).filter(v=>v.mod_id===mod.id):[];if(!ready){$('history').innerHTML='';return;}$('nohistory').hidden=!!entries.length;$('nohistory').textContent='该 Mod 暂无历史备份；翻译完成后会自动保存在这里。';const groupsMap=new Map();for(const v of entries){if(!groupsMap.has(v.mod_id))groupsMap.set(v.mod_id,[]);groupsMap.get(v.mod_id).push(v);}const groups=Array.from(groupsMap.entries());$('history').innerHTML=groups.map(([modId,versions])=>{const latest=versions[0];const isOpen=expandedHistoryMods.has(modId);return `<details class="history-mod-group" data-history-mod="${escapeText(modId)}" ${isOpen?'open':''}><summary class="history-mod-summary"><div class="grow"><strong>${escapeText(latest.title)} · 翻译版本</strong><div class="row sub" style="margin-top:4px"><span>UID ${escapeText(latest.uid)}</span><span class="badge info">共 ${versions.length} 个版本</span><span class="badge ok">${escapeText(latest.status)}</span><span>最新备份：${escapeText(new Date(latest.created_at).toLocaleString())}</span></div></div></summary><div class="history-mod-versions"><table><thead><tr><th>翻译版本 / 来源</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${versions.map(v=>`<tr><td><strong>版本 #${v.version_id}</strong><br><span class="sub">来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button> <button class="danger-action" data-delete-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)?'disabled':''}>删除缓存</button></td></tr>`).join('')}</tbody></table></div></details>`;}).join('');document.querySelectorAll('[data-history-mod]').forEach(d=>d.ontoggle=()=>{if(d.open)expandedHistoryMods.add(d.dataset.historyMod);else expandedHistoryMods.delete(d.dataset.historyMod);});document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
 document.addEventListener('click',async event=>{const button=event.target.closest('[data-delete-version]');if(!button)return;const version=state.history.find(v=>v.version_id===Number(button.dataset.deleteVersion)&&v.mod_id===button.dataset.mod);if(!version)return;if(!await ask(`删除「${version.title}」的缓存版本 #${version.version_id}？\n来源：${version.provider||'历史版本'}\n将永久删除此版本的 SQL 备份记录和仅由此版本保留的缓存映射。其他版本和本机中文文件保留。`,'确认删除缓存'))return;try{await api('delete-cache-version',{id:version.mod_id,version_id:version.version_id});await refresh();}catch(e){toast(e.message);}});
 async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?'已保存；留空保留':'尚未设置';initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">选择已保存的配置</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · 未保存密钥'}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('developer_exports').hidden=!state.config.developer_mode;$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/generated_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.analyzed_mod_ids)!==JSON.stringify(state.analyzed_mod_ids)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderHistory();}updateControls();
-const running=Object.values(state.jobs||{}).filter(j=>j.running);
-$('status').textContent=running.length?`${running.length} 个任务进行中 · 可切换其他 Mod 并行翻译`:'待命';
-$('task_list').innerHTML=Object.entries(state.jobs||{}).map(([id,j])=>`<button data-task-mod="${escapeText(id)}" ${id==='__global__'?'disabled':''}>${escapeText(state.mods.find(m=>m.id===id)?.title||(j.kind==='download-mod'?'Mod 下载':'目录刷新'))} · ${j.running?'执行中':j.error?'失败':'完成'}</button>`).join('');
+$('app_build').textContent='Paradox AI Translator · Your world, Your word'+(state.app_version?' · v'+state.app_version:'');$('storage').textContent='';
+const translateJobs=Object.entries(state.jobs||{}).filter(([id,j])=>id!=='__global__'&&j.kind==='translate');
+const running=translateJobs.filter(([,j])=>j.running);
+$('status').textContent=running.length?`${running.length} 个 Mod 正在翻译中 · 可切换其他 Mod 并行操作`:'待命';
+$('task_list').innerHTML=translateJobs.map(([id,j])=>`<button data-task-mod="${escapeText(id)}">${escapeText(state.mods.find(m=>m.id===id)?.title||id)} · ${j.running?'翻译中':j.error?'失败':'翻译完成'}</button>`).join('');
 document.querySelectorAll('[data-task-mod]').forEach(b=>b.onclick=()=>{selected=b.dataset.taskMod;activeGame=state.mods.find(m=>m.id===selected)?.game||activeGame;renderMods();renderSelection();renderTaskLogs();});
 renderTaskLogs();
 for(const [id,j] of Object.entries(state.jobs||{})){
@@ -515,7 +523,7 @@ for(const [id,j] of Object.entries(state.jobs||{})){
 }
 syncModExport();if(window.syncEntryBrowser)window.syncEntryBrowser();if(window.syncServerUI)window.syncServerUI();
 }catch(e){toast('连接程序失败：'+e.message);}}
-function renderTaskLogs(){const j=modJob();$('logs').textContent=j.messages.length?j.messages.join('\n'):(state.jobs?.__global__?.messages||[]).join('\n')||'该 Mod 暂无任务日志。';}
+function renderTaskLogs(){const j=modJob();$('logs').textContent=(j.kind==='translate'&&j.messages.length)?j.messages.join('\n'):'当前暂无前台翻译任务。选择 Mod 并点击「开始 AI 翻译」后，此处将实时显示该 Mod 的翻译进度。';}
 $('save').onclick=async()=>{try{const c={api_format:'openai',provider:$('provider').value.trim(),config_name:$('config_name').value.trim(),base_url:$('base_url').value.trim(),model:$('model').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value),steam_libraries:$('libraries').value.split('\n').map(v=>v.trim()).filter(Boolean)};if($('api_key').value.trim())c.api_key=$('api_key').value.trim();await api('config',c);$('api_key').value='';toast('配置已保存到本机 JSON');initialized=false;await refresh();}catch(e){toast(e.message);}};
 $('switch_storage').onclick=async()=>{try{await api('config-storage',{mode:$('storage_mode').value});initialized=false;await refresh();toast('配置保存位置已切换，当前配置与接口列表已复制');}catch(e){toast(e.message);}};
 $('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!name){toast('请选择已保存的配置');return;}try{await api('profile',{name});$('api_key').value='';initialized=false;await refresh();toast('已切换 API 配置：'+name);}catch(e){toast(e.message);}};

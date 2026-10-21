@@ -1,12 +1,18 @@
 /* Personal server controls; loaded only in --server-mode. */
 (() => {
   window.serverWorkshopLinks = true;
-  document.querySelector('h1').textContent = '你的模组，在线翻译工作台。';
+  document.querySelector('h1').textContent = 'Paradox AI Translator';
+  const headerSub = document.querySelector('header .sub');
+  if (headerSub) headerSub.textContent = 'Your world, Your word · 面向五款 Paradox 游戏的在线创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。';
   $('mode').className = '';
   $('mode').innerHTML = '<a href="#" id="tutorial_help">不会使用？</a>';
   $('tutorial_help').onclick = event => { event.preventDefault(); window.openWorkshopTutorial(); };
   $('open_tutorial').hidden = true;
   document.querySelector('.workflow').hidden = true;
+  $('scan').hidden = true;
+  // Shared refresh code still updates this node in server mode.
+  if ($('storage')) $('storage').hidden = true;
+  if ($('config_location')) $('config_location').hidden = true;
   const settings = $('settings');
   settings.querySelector('summary').textContent = '本次翻译 API';
   let field = settings.querySelector('[for="storage_mode"]');
@@ -104,20 +110,25 @@
   $('search').placeholder = '粘贴 Steam 创意工坊 Mod 链接';
   $('search').setAttribute('aria-label', 'Steam 创意工坊链接');
   $('search').oninput = null;
+  const lookupRow = document.createElement('div');
+  lookupRow.className = 'lookup-actions';
+  lookupRow.style.cssText = 'display:flex;gap:10px;align-items:center;margin-top:12px;margin-bottom:4px;flex-wrap:wrap';
   const lookupButton = document.createElement('button');
   lookupButton.textContent = '查询 Mod';
   lookupButton.type = 'button';
-  $('search').after(lookupButton);
-  const linkStatus = document.createElement('p');
-  linkStatus.className = 'sub';
-  linkStatus.setAttribute('role', 'status');
-  lookupButton.after(linkStatus);
+  lookupButton.className = 'primary';
   const downloadButton = document.createElement('button');
   downloadButton.type = 'button';
-  downloadButton.className = 'primary';
+  downloadButton.className = 'scan-action';
   downloadButton.textContent = '请求下载';
   downloadButton.hidden = true;
-  linkStatus.after(downloadButton);
+  lookupRow.append(lookupButton, downloadButton);
+  $('search').after(lookupRow);
+  const linkStatus = document.createElement('p');
+  linkStatus.className = 'sub';
+  linkStatus.style.margin = '6px 0 4px';
+  linkStatus.setAttribute('role', 'status');
+  lookupRow.after(linkStatus);
   let checkedLink = '', pending = false;
   async function choose(id) {
     selected = id;

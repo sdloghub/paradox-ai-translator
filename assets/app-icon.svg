@@ -1,1 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><title>Workshop Translator</title><rect x="8" y="8" width="240" height="240" rx="52" fill="#252c2b"/><rect x="45" y="47" width="102" height="127" rx="12" fill="#f7f6f3"/><rect x="111" y="84" width="102" height="127" rx="12" fill="#c3d1c1"/><path d="M68 137 94 76l26 61M78 116h33" fill="none" stroke="#252c2b" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M162 112v13m-27 0h54m-12 0c-5 29-21 47-41 57m11-44c9 23 23 34 43 44" fill="none" stroke="#252c2b" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><path d="M50 202h42m-10-10 10 10-10 10" fill="none" stroke="#f7f6f3" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="16" y1="12" x2="240" y2="244" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E1B4B"/>
+      <stop offset="0.52" stop-color="#312E81"/>
+      <stop offset="1" stop-color="#0F766E"/>
+    </linearGradient>
+    <linearGradient id="cardLeft" x1="44" y1="44" x2="148" y2="168" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0E7FF"/>
+    </linearGradient>
+    <linearGradient id="cardRight" x1="108" y1="88" x2="214" y2="212" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#0D9488"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="40" y1="36" x2="216" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <!-- Squircle Background -->
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="url(#bg)"/>
+  <rect x="15" y="15" width="226" height="226" rx="53" stroke="rgba(255,255,255,0.16)" stroke-width="3"/>
+  <!-- Subtle Grand Strategy Orbital Ring & Stars -->
+  <ellipse cx="128" cy="128" rx="92" ry="42" transform="rotate(-24 128 128)" stroke="url(#gold)" stroke-width="3.5" stroke-dasharray="8 8" opacity="0.55"/>
+  <circle cx="52" cy="60" r="4" fill="#FDE68A" opacity="0.85"/>
+  <circle cx="204" cy="56" r="3.5" fill="#A5F3FC" opacity="0.8"/>
+  <circle cx="62" cy="198" r="3" fill="#A5F3FC" opacity="0.7"/>
+  <!-- Left Card: Source Code / English [A] -->
+  <rect x="42" y="44" width="106" height="118" rx="22" fill="url(#cardLeft)"/>
+  <path d="M95 68L72 130H84.5L89.5 115.5H100.5L105.5 130H118L95 68ZM92.2 105L95 95.2L97.8 105H92.2Z" fill="#1E1B4B"/>
+  <rect x="64" y="138" width="62" height="6" rx="3" fill="#6366F1" opacity="0.45"/>
+  <!-- Right Card: Chinese Translation [文] -->
+  <rect x="108" y="92" width="106" height="118" rx="22" fill="url(#cardRight)" stroke="#FFFFFF" stroke-width="4"/>
+  <!-- Character 文 -->
+  <path d="M161 114V125M133 126H189" stroke="#FFFFFF" stroke-width="8.5" stroke-linecap="round"/>
+  <path d="M175 126C171 146 161 163 136 177" stroke="#FFFFFF" stroke-width="8.5" stroke-linecap="round"/>
+  <path d="M145 134C152 150 164 164 186 177" stroke="#FFFFFF" stroke-width="8.5" stroke-linecap="round"/>
+  <!-- Exchange / Hash Verified Arrow -->
+  <path d="M56 182H88M88 182L78 172M88 182L78 192" stroke="url(#gold)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

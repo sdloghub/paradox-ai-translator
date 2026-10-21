@@ -66,6 +66,23 @@ def protect_tokens(text):
 class ProtectedTokenError(ValueError):
     pass
 
+class LegalComplianceError(ValueError):
+    pass
+
+HOI4_ILLEGAL_ABORT_TOKEN = '__ILLEGAL_CONTENT_ABORT__'
+HOI4_PROHIBITED_PATTERN = re.compile(
+    r'(?:__ILLEGAL_CONTENT_ABORT__|台独|台湾独立|台湾共和国|藏独|西藏独立|疆独|东突厥斯坦|港独|香港独立|'
+    r'分裂中国|推翻中国共产党|打倒中国共产党|颠覆中华人民共和国|法轮功|法轮大法|真善忍好|三退保平安)',
+    re.I
+)
+
+def audit_hoi4_compliance(texts):
+    if isinstance(texts, str):
+        texts = [texts]
+    for item in texts:
+        if isinstance(item, str) and HOI4_PROHIBITED_PATTERN.search(item):
+            raise LegalComplianceError('审核未通过：检测到钢铁雄心4模组包含违反中国法律法规的内容，已直接终止并退出翻译任务')
+
 def restore_tokens(text, tokens):
     placeholders = re.findall(r'⟦WT[a-f0-9]+_\d+⟧', text)
     if Counter(placeholders) != Counter(tokens.keys()):
@@ -104,6 +121,8 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
         raise ValueError("batch_size 和 pool_size 必须大于零")
     if not tran:
         return []
+    if game == 'hoi4':
+        audit_hoi4_compliance(tran)
     translatable = [index for index, text in enumerate(tran) if not is_token_only(text)]
     if len(translatable) != len(tran):
         # 空白或仅含标识符/数字/标点的条目直接视为已翻译，跳过 API 送审并原样保留全部标识符。
@@ -142,7 +161,11 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
                 content = response.choices[0].message.content
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("模型返回空文本")
+                if game == 'hoi4':
+                    audit_hoi4_compliance(content)
                 return content
+            except LegalComplianceError:
+                raise
             except Exception as error:
                 status = getattr(error, "status_code", None)
                 transient = isinstance(error, (APIConnectionError, APITimeoutError)) or status in (408, 409, 429) or (isinstance(status, int) and status >= 500)
@@ -153,11 +176,15 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
     def translate_batch(batch):
         try:
             content = translate_text(separator.join(batch))
+        except LegalComplianceError:
+            raise
         except Exception as error:
             logging.warning("翻译请求失败，条目保留原文且不缓存 (%s)", type(error).__name__)
             return [failed(text, type(error).__name__) for text in batch]
         parts = content.split(separator)
         if len(parts) == len(batch) and all(valid_translation(original, part.strip()) for part, original in zip(parts, batch)):
+            if game == 'hoi4':
+                audit_hoi4_compliance(parts)
             return [{"text": output_text(part.strip()), "success": True, "error": None} for part in parts]
         logging.warning("批次分隔符数量或内容不正确，改为逐条翻译")
         results = []
@@ -178,7 +205,11 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
                 else:
                     results.append(failed(original, validation_error(original, text)))
                     continue
+                if game == 'hoi4':
+                    audit_hoi4_compliance(text)
                 results.append({"text": output_text(text), "success": True, "error": None})
+            except LegalComplianceError:
+                raise
             except Exception as error:
                 logging.warning("逐条翻译失败，保留原文且不缓存 (%s)", type(error).__name__)
                 results.append(failed(original, type(error).__name__))

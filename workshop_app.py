@@ -929,6 +929,8 @@ class WorkshopService:
         sources = self.original_sources(item)
         if not sources:
             raise ValueError('该 Mod 没有可识别的英文 localisation/localization YML 文件')
+        if item['game'] == 'hoi4':
+            request.audit_hoi4_compliance([data.decode('utf-8-sig', errors='ignore') for data in sources.values()])
         workspace = self.data_dir / 'workspaces' / item['appid'] / item['uid']
         inputs = workspace / 'localisation' / item['game']
         if inputs.exists():
@@ -972,6 +974,8 @@ class WorkshopService:
                 data = output.read_bytes()
                 if not data.startswith(b'\xef\xbb\xbf'):
                     data = b'\xef\xbb\xbf' + data
+                if item['game'] == 'hoi4':
+                    request.audit_hoi4_compliance(data.decode('utf-8-sig', errors='ignore'))
                 translated[target_path(name, item['game'])] = data
             choice = self.cache.selection(identifier)
             self.cache.select(identifier, choice['enabled'])
