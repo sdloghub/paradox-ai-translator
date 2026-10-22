@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.22-import.2'
+APP_VERSION = '2026.10.22-import.3'
 
 
 def program_directory():
@@ -1507,11 +1507,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not dev_logged_in:
                     cfg.update(provider='', config_name='', steam_libraries=[], developer_mode=False)
             from server_sessions import contributions
+            from server_upload import saved_translations
             return self.send(200, {'config': cfg, 'profiles': service.profiles() if not is_server or dev_logged_in else [], 'mods': list(service.inventory.values()),
                                    'shared_translations': contributions(service) if is_server else [],
                                    'history': service.history(), 'analyzed_mod_ids': sorted(service.analyzed_mod_ids), 'job': service.status(), 'jobs': service.task_statuses(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
                                    'app_version': APP_VERSION, 'program_dir': str(program_directory()),
                                    'dev_logged_in': dev_logged_in, 'target_language': service.target_language,
+                                   'saved_imports': saved_translations(service) if is_server and dev_logged_in else [],
                                    'aggregate_directory':str(documents_mod_root(service))})
         self.send(404, {'error': '未找到'})
 
@@ -1580,28 +1582,45 @@ class Handler(BaseHTTPRequestHandler):
                 suffix = Path(filename).suffix.lower()
                 if suffix not in ('.yml', '.yaml', '.json', '.zip'):
                     raise ValueError('仅支持导入 .yml、.yaml、.json 或 .zip 格式的文件')
-                upload_dir = service.data_dir / 'uploads'
-                upload_dir.mkdir(parents=True, exist_ok=True)
-                with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=suffix, delete=False) as temp:
-                    temp.write(data)
-                    temp_path = temp.name
+                saved = None
+                if self.is_dev_logged_in():
+                    from server_upload import save_translation
+                    saved, path = save_translation(service, data, filename, provider)
+                    temp_path = str(path)
+                else:
+                    upload_dir = service.data_dir / 'uploads'
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=suffix, delete=False) as temp:
+                        temp.write(data)
+                        temp_path = temp.name
                 def do_import():
                     try:
                         return service.import_cache(identifier, temp_path, provider)
                     finally:
-                        Path(temp_path).unlink(missing_ok=True)
+                        if saved is None:
+                            Path(temp_path).unlink(missing_ok=True)
                 try:
                     job_id = service.start('import', do_import, identifier)
                 except Exception:
-                    Path(temp_path).unlink(missing_ok=True)
+                    if saved is None:
+                        Path(temp_path).unlink(missing_ok=True)
                     raise
-                return self.send(202, {'ok': True, 'job_id': job_id})
+                return self.send(202, {'ok': True, 'job_id': job_id, 'saved_upload': saved})
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= 65536:
                 raise ValueError('请求大小错误')
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError('请求格式错误')
+            if self.path == '/api/import-saved' and getattr(service, 'server_mode', False):
+                if not self.is_dev_logged_in():
+                    return self.send(403, {'error': '仅开发者可使用已保存译文'})
+                from server_upload import saved_translation
+                metadata, path = saved_translation(service, body.get('upload_id'))
+                identifier = body['id']
+                service.get_mod(identifier)
+                job_id = service.start('import', lambda: service.import_cache(identifier, path, metadata.get('provider', '')), identifier)
+                return self.send(202, {'ok': True, 'job_id': job_id, 'saved_upload': metadata})
             if getattr(service, 'server_mode', False):
                 if self.path in ('/api/open', '/api/open-aggregate', '/api/open-generated-mod', '/api/pick-file', '/api/pick-folder'):
                     raise ValueError('网页版不支持打开服务器本地窗口')

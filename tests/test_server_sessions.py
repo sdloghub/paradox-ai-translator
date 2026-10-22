@@ -108,6 +108,75 @@ class GuestPrivacyTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertFalse(list((guest.data_dir / 'uploads').iterdir()))
 
+    def developer_cookie(self):
+        import urllib.parse
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
+        conn.request('POST', '/api/login', urllib.parse.urlencode({
+            'username': 'translator', 'password': 'test-password-long-enough'}))
+        response = conn.getresponse()
+        self.assertEqual(response.status, 303)
+        cookie = response.getheader('Set-Cookie').split(';')[0]
+        response.read()
+        conn.close()
+        return cookie
+
+    def test_developer_upload_is_saved_even_unmatched_and_reusable_privately(self):
+        from server_upload import saved_translations, saved_translation
+        cookie = self.developer_cookie()
+        lookup(self.root, 'https://steamcommunity.com/sharedfiles/filedetails/?id=123')
+        data = 'l_simp_chinese:\n other_key:0 "已保存的译文"\n'.encode()
+        status, body = self.upload_translation(cookie, 'original-name.yml', data)
+        self.assertEqual(status, 202, body)
+        saved = json.loads(body)['saved_upload']
+        for _ in range(100):
+            if not self.root.busy(): break
+            time.sleep(.02)
+        self.assertFalse(self.root.busy())
+        self.assertIsNone(self.root.jobs['281990:123']['result']['version_id'])
+        self.assertEqual(saved_translations(self.root)[0]['filename'], 'original-name.yml')
+        restarted = app.WorkshopService(self.root.data_dir)
+        metadata, path = saved_translation(restarted, saved['id'])
+        self.assertEqual(path.read_bytes(), data)
+        self.assertEqual(path.stat().st_mode & 0o077, 0)
+        # Selecting a compatible original Mod can reuse the exact retained upload.
+        source = self.root.data_dir / 'workshop_sources/281990/124'
+        (source / 'localisation/english').mkdir(parents=True)
+        (source / 'descriptor.mod').write_text('name="Other original"')
+        (source / 'localisation/english/test.yml').write_text('l_english:\n other_key:0 "Saved translation"\n')
+        lookup(self.root, 'https://steamcommunity.com/sharedfiles/filedetails/?id=124')
+        status, _, body = self.call('/api/import-saved', {'id': '281990:124', 'upload_id': saved['id']}, cookie)
+        self.assertEqual(status, 202, body)
+        for _ in range(100):
+            if not self.root.busy(): break
+            time.sleep(.02)
+        self.assertEqual(self.root.jobs['281990:124']['result']['imported'], 1)
+        self.assertEqual(path.read_bytes(), data)
+        status, _, body = self.call('/api/state', cookie=cookie)
+        self.assertEqual(json.loads(body)['saved_imports'][0]['id'], saved['id'])
+        guest_cookie, guest = self.guest()
+        status, _, body = self.call('/api/state', cookie=guest_cookie)
+        self.assertEqual(json.loads(body)['saved_imports'], [])
+        status, _, _ = self.call('/api/import-saved', {'id': '281990:124', 'upload_id': saved['id']}, guest_cookie)
+        self.assertEqual(status, 403)
+        self.assertFalse(saved_translations(guest))
+        for invalid in ['../other', '/etc/passwd', '0' * 32]:
+            with self.assertRaises(ValueError):
+                saved_translation(self.root, invalid)
+
+    def test_developer_malformed_upload_is_retained_after_import_error(self):
+        from server_upload import saved_translations, saved_translation
+        cookie = self.developer_cookie()
+        lookup(self.root, 'https://steamcommunity.com/sharedfiles/filedetails/?id=123')
+        status, body = self.upload_translation(cookie, 'broken.zip', b'invalid ZIP')
+        self.assertEqual(status, 202, body)
+        saved = json.loads(body)['saved_upload']
+        for _ in range(100):
+            if not self.root.busy(): break
+            time.sleep(.02)
+        self.assertIsNotNone(self.root.jobs['281990:123']['error'])
+        self.assertEqual(saved_translation(self.root, saved['id'])[1].read_bytes(), b'invalid ZIP')
+        self.assertEqual(len(saved_translations(self.root)), 1)
+
     def test_guest_workspaces_are_isolated_and_config_save_is_admin_only(self):
         cookie1, first = self.guest()
         cookie2, second = self.guest()

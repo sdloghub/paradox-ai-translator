@@ -273,6 +273,11 @@
     <input id="upload_import_file" type="file" accept=".yml,.yaml,.json,.zip">
     <label for="upload_import_folder" style="margin-top:12px">或选择本地文件夹（包含子文件夹）</label>
     <input id="upload_import_folder" type="file" webkitdirectory multiple>
+    <div id="saved_import_controls" hidden style="margin-top:12px">
+      <p class="sub">开发者上传的文件默认保存；当前 Mod 不匹配也会保留，可切换原 Mod 后再次导入。</p>
+      <label for="saved_import_select">或使用已保存的译文</label>
+      <select id="saved_import_select"><option value="">选择已保存文件</option></select>
+    </div>
     <label for="upload_import_provider" style="margin-top:12px">导入者名称（可留空自动命名）</label>
     <input id="upload_import_provider" maxlength="80" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
     <p id="upload_import_status" class="sub" role="status" style="margin:10px 0 0"></p>
@@ -285,13 +290,16 @@
   $('close_upload_import').onclick = () => importDialog.close();
   $('cancel_upload_import').onclick = () => importDialog.close();
 
-  $('upload_import_file').onchange = () => { $('upload_import_folder').value = ''; };
-  $('upload_import_folder').onchange = () => { $('upload_import_file').value = ''; };
+  $('upload_import_file').onchange = () => { $('upload_import_folder').value = ''; $('saved_import_select').value = ''; };
+  $('upload_import_folder').onchange = () => { $('upload_import_file').value = ''; $('saved_import_select').value = ''; };
+  $('saved_import_select').onchange = () => { $('upload_import_file').value = ''; $('upload_import_folder').value = ''; };
   let importTarget = null;
   // 网页版拦截原导入按钮：调用浏览器文件选择
   $('import_btn').onclick = () => {
     if (!selected) { toast('请先在左侧选择一个 Mod'); return; }
     importTarget = selected;
+    $('saved_import_controls').hidden = !state.dev_logged_in;
+    $('saved_import_select').innerHTML = '<option value="">选择已保存文件</option>' + (state.saved_imports || []).map(upload => `<option value="${escapeText(upload.id)}">${escapeText(upload.filename)} · ${escapeText(upload.created_at)}</option>`).join('');
     $('upload_import_status').textContent = '';
     $('upload_import_file').value = '';
     $('upload_import_folder').value = '';
@@ -302,16 +310,18 @@
     if (!selected) { toast('请先在左侧选择一个 Mod'); return; }
     const file = $('upload_import_file').files[0];
     const folderFiles = Array.from($('upload_import_folder').files);
-    if (!file && !folderFiles.length) { $('upload_import_status').textContent = '请选择要导入的文件或文件夹'; return; }
+    const savedId = state.dev_logged_in ? $('saved_import_select').value : '';
+    if (!file && !folderFiles.length && !savedId) { $('upload_import_status').textContent = '请选择要导入的文件或文件夹'; return; }
     if (file && file.size > 32 * 1024 * 1024) { $('upload_import_status').textContent = '文件最大为 32 MB'; return; }
     $('confirm_upload_import').disabled = true;
     $('upload_import_status').textContent = '正在上传文件并解析条目，请稍候…';
+    let savedName = '';
     try {
       let body = file, filename = file?.name;
       if (folderFiles.length) {
         $('upload_import_status').textContent = '正在整理文件夹中的译文…';
         const archive = await folderImportArchive(folderFiles);
-        body = archive.blob; filename = 'folder-translations.zip';
+        body = archive.blob; filename = (folderFiles[0].webkitRelativePath.split('/')[0] || 'folder-translations') + '.zip';
         $('upload_import_status').textContent = `正在上传 ${archive.count} 个译文 / 缓存文件…`;
       }
       const query = new URLSearchParams({
@@ -319,13 +329,19 @@
         provider: $('upload_import_provider').value.trim(),
         filename
       });
-      const response = await fetch('/api/upload-import?' + query, {
-        method: 'POST',
-        headers: {'X-App-Token': token, 'Content-Type': 'application/octet-stream'},
-        body
-      });
-      const result = await response.json();
-      if (!response.ok) throw Error(result.error || '导入失败');
+      let result;
+      if (savedId) {
+        result = await api('import-saved', {id: importTarget, upload_id: savedId});
+      } else {
+        const response = await fetch('/api/upload-import?' + query, {
+          method: 'POST',
+          headers: {'X-App-Token': token, 'Content-Type': 'application/octet-stream'},
+          body
+        });
+        result = await response.json();
+        if (!response.ok) throw Error(result.error || '导入失败');
+      }
+      savedName = result.saved_upload?.filename || '';
       while (true) {
         const current = await api('state');
         const job = current.jobs?.[importTarget];
@@ -333,7 +349,7 @@
         if (!job.running) {
           if (job.error) throw Error(job.error);
           if (!job.result.version_id) throw Error(job.result.warning || '未找到匹配译文，未生成缓存版本');
-          toast(`已保存缓存版本 #${job.result.version_id}：新增 ${job.result.imported} 条，当前可用 ${job.result.cached} 条，跳过 ${job.result.rejected} 条。`);
+          toast(`${savedName ? '上传文件已保留；' : ''}已保存缓存版本 #${job.result.version_id}：新增 ${job.result.imported} 条，当前可用 ${job.result.cached} 条，跳过 ${job.result.rejected} 条。`);
           break;
         }
         $('upload_import_status').textContent = '正在比对原文并导入译文…';
@@ -342,7 +358,8 @@
       importDialog.close();
       await refresh();
     } catch (error) {
-      $('upload_import_status').textContent = error.message;
+      $('upload_import_status').textContent = (savedName ? `文件「${savedName}」已保存，可切换原 Mod 后再次导入。` : '') + error.message;
+      await refresh();
     } finally {
       $('confirm_upload_import').disabled = false;
     }

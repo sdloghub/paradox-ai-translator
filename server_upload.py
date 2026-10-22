@@ -73,3 +73,57 @@ def upload_mod(service, data, appid, uid):
         root.rename(destination)
     service.scan(lambda ids: {})
     return {'ok': True, 'id': f'{appid}:{uid}'}
+
+
+def saved_translation(service, upload_id):
+    """Resolve a developer upload by opaque ID, never by a client-supplied path."""
+    import json
+    if not isinstance(upload_id, str) or not re.fullmatch(r'[0-9a-f]{32}', upload_id):
+        raise ValueError('已保存译文不存在')
+    directory = service.data_dir / 'saved_imports' / upload_id
+    if directory.is_symlink() or not directory.resolve().is_relative_to(service.data_dir.resolve()):
+        raise ValueError('已保存译文路径无效')
+    try:
+        metadata_path = directory / 'metadata.json'
+        if metadata_path.is_symlink():
+            raise ValueError('已保存译文路径无效')
+        metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+        suffix = Path(metadata['filename']).suffix.lower()
+        if metadata.get('id') != upload_id or suffix not in ('.yml', '.yaml', '.json', '.zip'):
+            raise ValueError('已保存译文记录无效')
+        path = directory / ('upload' + suffix)
+        if path.is_symlink() or not path.is_file():
+            raise ValueError('已保存译文文件不存在')
+        return metadata, path
+    except (OSError, KeyError, TypeError) as error:
+        raise ValueError('已保存译文不存在') from error
+
+
+def saved_translations(service):
+    result = []
+    for directory in (service.data_dir / 'saved_imports').glob('*'):
+        try:
+            metadata, _ = saved_translation(service, directory.name)
+            result.append(metadata)
+        except ValueError:
+            continue
+    return sorted(result, key=lambda item: item['created_at'], reverse=True)
+
+
+def save_translation(service, data, filename, provider=''):
+    import json
+    import secrets
+    from workshop_app import atomic_bytes, now
+    # Store original bytes even if there is no matching Mod or parsing later fails.
+    filename = Path(filename.replace('\\', '/')).name[:200]
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ('.yml', '.yaml', '.json', '.zip') or not 0 < len(data) <= MAX_UPLOAD:
+        raise ValueError('译文文件格式或大小无效')
+    upload_id = secrets.token_hex(16)
+    directory = service.data_dir / 'saved_imports' / upload_id
+    directory.mkdir(parents=True, mode=0o700)
+    metadata = {'id': upload_id, 'filename': filename, 'size': len(data),
+                'provider': str(provider)[:80], 'created_at': now()}
+    atomic_bytes(directory / ('upload' + suffix), data, private=True)
+    atomic_bytes(directory / 'metadata.json', json.dumps(metadata, ensure_ascii=False).encode(), private=True)
+    return metadata, directory / ('upload' + suffix)
