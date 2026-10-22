@@ -216,15 +216,63 @@
   $('close_upload_mod').onclick = () => dialog.close();
   $('cancel_upload_mod').onclick = () => dialog.close();
 
+  // Bundle only supported translations; preserve relative paths for hash matching.
+  async function folderImportArchive(files) {
+    const selectedFiles = Array.from(files).filter(file => /\.(yml|yaml|json)$/i.test(file.name));
+    if (!selectedFiles.length) throw Error('文件夹中没有可导入的 .yml、.yaml 或 .json 文件');
+    if (selectedFiles.length > 5000) throw Error('文件夹最多包含 5000 个译文文件');
+    const limit = 32 * 1024 * 1024;
+    if (selectedFiles.reduce((size, file) => size + file.size, 0) > limit) throw Error('译文文件总大小不能超过 32 MB');
+    const encoder = new TextEncoder(), parts = [], central = [];
+    const table = Array.from({length: 256}, (_, value) => {
+      for (let bit = 0; bit < 8; bit++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0);
+      return value >>> 0;
+    });
+    let offset = 0, centralSize = 0;
+    for (const file of selectedFiles) {
+      const path = file.webkitRelativePath || file.name;
+      if (path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '..' || part === '.')) throw Error('文件夹包含无效路径');
+      const name = encoder.encode(path);
+      if (name.length > 65535) throw Error('文件路径过长');
+      const data = new Uint8Array(await file.arrayBuffer());
+      let crc = 0xffffffff;
+      for (const byte of data) crc = (crc >>> 8) ^ table[(crc ^ byte) & 255];
+      crc = (crc ^ 0xffffffff) >>> 0;
+      const local = new Uint8Array(30 + name.length), header = new DataView(local.buffer);
+      header.setUint32(0, 0x04034b50, true);
+      header.setUint16(4, 20, true); header.setUint16(6, 0x0800, true);
+      header.setUint32(14, crc, true);
+      header.setUint32(18, data.length, true); header.setUint32(22, data.length, true);
+      header.setUint16(26, name.length, true); local.set(name, 30);
+      const record = new Uint8Array(46 + name.length), directory = new DataView(record.buffer);
+      directory.setUint32(0, 0x02014b50, true);
+      directory.setUint16(4, 20, true); directory.setUint16(6, 20, true); directory.setUint16(8, 0x0800, true);
+      directory.setUint32(16, crc, true);
+      directory.setUint32(20, data.length, true); directory.setUint32(24, data.length, true);
+      directory.setUint16(28, name.length, true); directory.setUint32(42, offset, true);
+      record.set(name, 46);
+      parts.push(local, data); central.push(record);
+      offset += local.length + data.length; centralSize += record.length;
+      if (offset + centralSize + 22 > limit) throw Error('打包后的译文超过 32 MB，请选择较小的文件夹');
+    }
+    const end = new Uint8Array(22), footer = new DataView(end.buffer);
+    footer.setUint32(0, 0x06054b50, true);
+    footer.setUint16(8, selectedFiles.length, true); footer.setUint16(10, selectedFiles.length, true);
+    footer.setUint32(12, centralSize, true); footer.setUint32(16, offset, true);
+    return {blob: new Blob([...parts, ...central, end], {type: 'application/zip'}), count: selectedFiles.length};
+  }
+
   // 网页版浏览器文件导入对话框
   const importDialog = document.createElement('dialog');
   importDialog.id = 'upload_import_dialog';
   importDialog.setAttribute('aria-labelledby', 'upload_import_title');
   importDialog.innerHTML = `
     <div class="row"><h2 id="upload_import_title" class="grow" style="margin:0">导入译文 / 缓存</h2><button id="close_upload_import" type="button">关闭</button></div>
-    <p class="sub" style="margin:10px 0 14px">选择当前目标语言的本地化文件 (.yml / .yaml)、哈希缓存 (.json) 或此前导出的 ZIP 包（最大 32 MB）。系统将提取匹配条目并导入当前 Mod 工作区。</p>
+    <p class="sub" style="margin:10px 0 14px">选择当前目标语言的本地化文件 (.yml / .yaml)、哈希缓存 (.json) 或此前导出的 ZIP 包（最大 32 MB）。也可选择整个文件夹，将自动包含子文件夹中的译文和缓存；其他类型文件不会上传。</p>
     <label for="upload_import_file">选择本地文件</label>
     <input id="upload_import_file" type="file" accept=".yml,.yaml,.json,.zip">
+    <label for="upload_import_folder" style="margin-top:12px">或选择本地文件夹（包含子文件夹）</label>
+    <input id="upload_import_folder" type="file" webkitdirectory multiple>
     <label for="upload_import_provider" style="margin-top:12px">导入者名称（可留空自动命名）</label>
     <input id="upload_import_provider" maxlength="80" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
     <p id="upload_import_status" class="sub" role="status" style="margin:10px 0 0"></p>
@@ -237,6 +285,8 @@
   $('close_upload_import').onclick = () => importDialog.close();
   $('cancel_upload_import').onclick = () => importDialog.close();
 
+  $('upload_import_file').onchange = () => { $('upload_import_folder').value = ''; };
+  $('upload_import_folder').onchange = () => { $('upload_import_file').value = ''; };
   let importTarget = null;
   // 网页版拦截原导入按钮：调用浏览器文件选择
   $('import_btn').onclick = () => {
@@ -244,26 +294,35 @@
     importTarget = selected;
     $('upload_import_status').textContent = '';
     $('upload_import_file').value = '';
+    $('upload_import_folder').value = '';
     importDialog.showModal();
   };
 
   $('confirm_upload_import').onclick = async () => {
     if (!selected) { toast('请先在左侧选择一个 Mod'); return; }
     const file = $('upload_import_file').files[0];
-    if (!file) { $('upload_import_status').textContent = '请选择要导入的文件'; return; }
-    if (file.size > 32 * 1024 * 1024) { $('upload_import_status').textContent = '文件最大为 32 MB'; return; }
+    const folderFiles = Array.from($('upload_import_folder').files);
+    if (!file && !folderFiles.length) { $('upload_import_status').textContent = '请选择要导入的文件或文件夹'; return; }
+    if (file && file.size > 32 * 1024 * 1024) { $('upload_import_status').textContent = '文件最大为 32 MB'; return; }
     $('confirm_upload_import').disabled = true;
     $('upload_import_status').textContent = '正在上传文件并解析条目，请稍候…';
     try {
+      let body = file, filename = file?.name;
+      if (folderFiles.length) {
+        $('upload_import_status').textContent = '正在整理文件夹中的译文…';
+        const archive = await folderImportArchive(folderFiles);
+        body = archive.blob; filename = 'folder-translations.zip';
+        $('upload_import_status').textContent = `正在上传 ${archive.count} 个译文 / 缓存文件…`;
+      }
       const query = new URLSearchParams({
         id: importTarget,
         provider: $('upload_import_provider').value.trim(),
-        filename: file.name
+        filename
       });
       const response = await fetch('/api/upload-import?' + query, {
         method: 'POST',
         headers: {'X-App-Token': token, 'Content-Type': 'application/octet-stream'},
-        body: file
+        body
       });
       const result = await response.json();
       if (!response.ok) throw Error(result.error || '导入失败');
