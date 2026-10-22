@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.22-import.1'
+APP_VERSION = '2026.10.22-import.2'
 
 
 def program_directory():
@@ -912,17 +912,31 @@ class WorkshopService:
             raise ValueError('未找到当前目标语言的有效译文，请检查文件内容和语言选择')
         label = self.source_label('导入', provider)
         result = self.cache.import_candidates(item, sources, translations, '导入 · ' + label)
+        if not result['accepted']:
+            return {**result, **self.cache.stats(item, sources), 'provider': label,
+                    'version_id': None, 'warning': '没有匹配当前 Mod 原文的有效译文，未生成缓存版本'}
+        # An explicit import should become usable even after cache opt-out/history selection.
+        self.cache.select(identifier, True)
         self.cache.sync_workspace(item, sources, collect=False)
         item['cache_selection'] = self.cache.selection(identifier)
         item['counts'] = self.cache.stats(item, sources)
         item['scan_state'] = '已扫描'
+        package = unarchive(self.cache.export_package(item))
+        translated = {name: data for name, data in package.items() if name.lower().endswith('.yml')}
+        source_digest = hashlib.sha256(b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() for name, data in sorted(sources.items()))).hexdigest()
+        with self.connect() as db:
+            cursor = db.execute('INSERT INTO versions(id,mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM versions UNION ALL SELECT version_id AS id FROM deleted_cache_versions)),?,?,?,?,?,?,?,?,?)',
+                                (identifier, now(), item['title'], source_digest, '已导入', archive(sources), archive(translated), label, json.dumps(item['counts']['origins'], ensure_ascii=False)))
+            version = cursor.lastrowid
+        item['cache_selection'] = self.cache.selection(identifier)
+        item['translated'] = True
         self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条")
         warning = '导入缓存无法检查 Steam 上尚未安装的原文更新；仅校验本机英文。无原文哈希的中文文件无法判断是否需要更新，请确认来源版本。'
         self.log(warning)
         self.persist_item(item)
         self.save_completed()
         self.analyzed_mod_ids.add(identifier)
-        return {**result, **item['counts'], 'provider': label, 'warning': warning}
+        return {**result, **item['counts'], 'provider': label, 'warning': warning, 'version_id': version}
 
     def export_package(self, identifier):
         item = self.get_mod(identifier)

@@ -35,6 +35,44 @@ class CacheIntegrationTests(unittest.TestCase):
         self.assertEqual(self.item['counts']['deployed'], 1)
         self.assertEqual(self.item['counts']['cached'], 0)
 
+    def test_import_creates_persistent_history_and_reenables_latest_cache(self):
+        self.source.write_text('l_english:\n key:0 "Hello"\n', encoding='utf-8')
+        path = self.root / 'import.yml'
+        path.write_text('l_simp_chinese:\n key:0 "你好"\n', encoding='utf-8')
+        self.service.cache.select(self.identifier, False)
+        imported = self.service.import_cache(self.identifier, path, '测试导入者')
+        self.assertEqual(imported['imported'], 1)
+        self.assertEqual(imported['cached'], 1)
+        choice = self.service.cache.selection(self.identifier)
+        self.assertTrue(choice['enabled'])
+        self.assertIsNone(choice['version_id'])
+        self.assertEqual(self.service.history()[0]['version_id'], imported['version_id'])
+        restarted = app.WorkshopService(self.service.data_dir)
+        self.assertEqual(restarted.cache.selection(self.identifier)['entries'], 1)
+        self.assertEqual(restarted.history()[0]['version_id'], imported['version_id'])
+        self.assertIn('你好', json.dumps(json.loads(restarted.completed_path.read_text()), ensure_ascii=False))
+        # Reimport already-stored translations still creates a usable history snapshot.
+        restarted.cache.select(self.identifier, True, imported['version_id'])
+        repeated = restarted.import_cache(self.identifier, path)
+        self.assertEqual(repeated['imported'], 0)
+        self.assertEqual(repeated['cached'], 1)
+        self.assertIsNone(restarted.cache.selection(self.identifier)['version_id'])
+        self.assertEqual(len(restarted.history()), 2)
+        restarted.select_cache(self.identifier, True, repeated['version_id'])
+        self.assertEqual(restarted.get_mod(self.identifier)['counts']['cached'], 1)
+        restarted.restore(repeated['version_id'], self.identifier)
+        self.assertIn('你好', (self.mod / app.target_path('localisation/english/test_l_english.yml', 'hoi4')).read_text('utf-8-sig'))
+
+    def test_unmatched_import_does_not_create_history_or_enable_cache(self):
+        path = self.root / 'wrong.yml'
+        path.write_text('l_simp_chinese:\n unknown_key:0 "不匹配"\n')
+        self.service.cache.select(self.identifier, False)
+        result = self.service.import_cache(self.identifier, path)
+        self.assertIsNone(result['version_id'])
+        self.assertIn('没有匹配', result['warning'])
+        self.assertFalse(self.service.cache.selection(self.identifier)['enabled'])
+        self.assertEqual(self.service.history(), [])
+
     def test_token_only_cache_with_chinese_is_actually_deployed(self):
         self.source.write_text('l_english:\n councilor:0 "£logo£ $COUNCILOR$"\n', encoding='utf-8')
         source = entries(self.service.original_sources(self.item), 'hoi4')[0]

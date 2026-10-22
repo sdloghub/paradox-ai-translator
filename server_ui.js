@@ -332,7 +332,8 @@
         if (!job || job.id !== result.job_id) throw Error('导入任务状态已改变，请检查任务记录。');
         if (!job.running) {
           if (job.error) throw Error(job.error);
-          toast(`导入完成：新增 ${job.result.imported} 条，跳过 ${job.result.rejected} 条。`);
+          if (!job.result.version_id) throw Error(job.result.warning || '未找到匹配译文，未生成缓存版本');
+          toast(`已保存缓存版本 #${job.result.version_id}：新增 ${job.result.imported} 条，当前可用 ${job.result.cached} 条，跳过 ${job.result.rejected} 条。`);
           break;
         }
         $('upload_import_status').textContent = '正在比对原文并导入译文…';

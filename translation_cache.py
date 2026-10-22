@@ -299,7 +299,7 @@ class ModCache:
 
     def import_candidates(self, item, sources, translations, origin):
         source_entries = [entry for entry in entries(sources, item['game'], strict=False) if entry['text'].strip()]
-        imported = rejected = 0
+        imported = rejected = accepted = 0
         source_counts = {}
         for entry in source_entries:
             key = canonical_key(entry['key'])
@@ -340,6 +340,7 @@ class ModCache:
                         continue
                     valid.append(text)
                 if len(set(valid)) == 1:
+                    accepted += 1
                     # Preserve existing validated translation for this exact source version.
                     existing = db.execute('''SELECT chinese FROM translation_entries WHERE
                         mod_id=? AND source_file=? AND entry_key=? AND source_hash=?''',
@@ -349,7 +350,7 @@ class ModCache:
                         imported += 1
                 elif valid:
                     rejected += 1
-        return {'imported': imported, 'rejected': rejected}
+        return {'imported': imported, 'rejected': rejected, 'accepted': accepted}
 
     def sync_workspace(self, item, sources, origin='翻译缓存', collect=True):
         workspace = self.service.data_dir / 'workspaces' / item['appid'] / item['uid']
