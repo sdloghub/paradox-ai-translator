@@ -1,5 +1,7 @@
 """Versioned source/translation mappings shared by scan, import and translation."""
 import hashlib
+import io
+import zipfile
 import json
 from pathlib import Path
 import re
@@ -110,7 +112,7 @@ def _parse_yml_candidates(filename, data, game):
 
 def candidates(path, game):
     path = Path(path).expanduser().resolve()
-    paths = sorted(list(path.rglob('*.yml')) + list(path.rglob('*.cache.json')) + list(path.rglob('*.zip'))) if path.is_dir() else [path]
+    paths = sorted(list(path.rglob('*.yml')) + list(path.rglob('*.yaml')) + list(path.rglob('*.cache.json')) + list(path.rglob('*.zip'))) if path.is_dir() else [path]
     json_entries = []
     yml_entries = []
     for file in paths:
@@ -121,16 +123,24 @@ def candidates(path, game):
         suffix = file.suffix.lower()
         if suffix == '.json':
             json_entries.extend(_parse_json_candidates(file.read_text(encoding='utf-8-sig')))
-        elif suffix == '.yml':
+        elif suffix in ('.yml', '.yaml'):
             yml_entries.extend(_parse_yml_candidates(file, file.read_bytes(), game))
         elif suffix == '.zip':
             from workshop_app import unarchive
-            members = unarchive(file.read_bytes())
+            blob = file.read_bytes()
+            try:
+                with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+                    infos = archive.infolist()
+                    if len(infos) > 5000 or sum(info.file_size for info in infos) > 128 * 1024 * 1024:
+                        raise ValueError('译文 ZIP 解压后不得超过 128 MB 或 5000 个条目')
+                members = unarchive(blob)
+            except zipfile.BadZipFile as error:
+                raise ValueError('请上传有效的译文 ZIP 压缩包') from error
             for name, content in sorted(members.items()):
                 lower = name.lower()
                 if lower.endswith('.json'):
                     json_entries.extend(_parse_json_candidates(content.decode('utf-8-sig')))
-                elif lower.endswith('.yml'):
+                elif lower.endswith(('.yml', '.yaml')):
                     yml_entries.extend(_parse_yml_candidates(name, content, game))
     if json_entries and yml_entries:
         hash_by_file_key = {}

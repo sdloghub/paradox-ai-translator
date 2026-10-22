@@ -4,7 +4,7 @@
 
 # Paradox AI Translator
 
-**Your world, Your word**
+**Your world, Your word!**
 
 面向五款 Paradox 遊戲的工作坊翻譯工作台：保留變數、顏色與格式標記，只在英文雜湊仍然相符時沿用舊譯文。
 
@@ -131,5 +131,5 @@ Mac 與 Windows 建置未簽署，請核對每次發行附帶的校驗檔案。
 ---
 
 <div align="center">
-<sub>Your world, Your word · <a href="https://github.com/sdloghub/paradox-ai-translator/issues/new">Missing your language? Add it!</a></sub>
+<sub>Your world, Your word! · <a href="https://github.com/sdloghub/paradox-ai-translator/issues/new">Missing your language? Add it!</a></sub>
 </div>

@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.21-languages.1'
+APP_VERSION = '2026.10.22-import.1'
 
 
 def program_directory():
@@ -908,6 +908,8 @@ class WorkshopService:
             raise ValueError('所选文件或目录不存在')
         sources = self.original_sources(item)
         translations = candidates(chosen, item['game'])
+        if not translations:
+            raise ValueError('未找到当前目标语言的有效译文，请检查文件内容和语言选择')
         label = self.source_label('导入', provider)
         result = self.cache.import_candidates(item, sources, translations, '导入 · ' + label)
         self.cache.sync_workspace(item, sources, collect=False)
@@ -919,6 +921,7 @@ class WorkshopService:
         self.log(warning)
         self.persist_item(item)
         self.save_completed()
+        self.analyzed_mod_ids.add(identifier)
         return {**result, **item['counts'], 'provider': label, 'warning': warning}
 
     def export_package(self, identifier):
@@ -1546,6 +1549,39 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('上传未完成')
                     result = upload_mod(service, data, query.get('appid', [''])[0], query.get('uid', [''])[0])
                 return self.send(200, result)
+            if self.path.startswith('/api/upload-import?') and getattr(service, 'server_mode', False):
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 32 * 1024 * 1024:
+                    raise ValueError('导入文件大小必须在 1 字节至 32 MB 之间')
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                identifier = query.get('id', [''])[0]
+                provider = query.get('provider', [''])[0]
+                filename = query.get('filename', ['import.zip'])[0]
+                if not identifier:
+                    raise ValueError('请先选择 Mod')
+                service.get_mod(identifier)
+                data = self.rfile.read(length)
+                if len(data) != length:
+                    raise ValueError('上传未完成')
+                suffix = Path(filename).suffix.lower()
+                if suffix not in ('.yml', '.yaml', '.json', '.zip'):
+                    raise ValueError('仅支持导入 .yml、.yaml、.json 或 .zip 格式的文件')
+                upload_dir = service.data_dir / 'uploads'
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=suffix, delete=False) as temp:
+                    temp.write(data)
+                    temp_path = temp.name
+                def do_import():
+                    try:
+                        return service.import_cache(identifier, temp_path, provider)
+                    finally:
+                        Path(temp_path).unlink(missing_ok=True)
+                try:
+                    job_id = service.start('import', do_import, identifier)
+                except Exception:
+                    Path(temp_path).unlink(missing_ok=True)
+                    raise
+                return self.send(202, {'ok': True, 'job_id': job_id})
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= 65536:
                 raise ValueError('请求大小错误')

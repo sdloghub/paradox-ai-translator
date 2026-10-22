@@ -4,7 +4,7 @@
 
 # Paradox AI Translator
 
-**Your world, Your word**
+**Your world, Your word!**
 
 A workshop-aware translation workbench for five Paradox games that keeps variables, colours and formatting intact, and reuses a translation only when the English source hash still matches.
 
@@ -131,5 +131,5 @@ The Mac and Windows builds are unsigned; verify the checksum file shipped with e
 ---
 
 <div align="center">
-<sub>Your world, Your word · <a href="https://github.com/sdloghub/paradox-ai-translator/issues/new">Missing your language? Add it!</a></sub>
+<sub>Your world, Your word! · <a href="https://github.com/sdloghub/paradox-ai-translator/issues/new">Missing your language? Add it!</a></sub>
 </div>

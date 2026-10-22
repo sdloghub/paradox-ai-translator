@@ -3,7 +3,9 @@
   window.serverWorkshopLinks = true;
   document.querySelector('h1').textContent = 'Paradox AI Translator';
   const headerSub = document.querySelector('header .sub');
-  if (headerSub) headerSub.textContent = 'Your world, Your word · 面向五款 Paradox 游戏的在线创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。';
+  if (headerSub) {
+    headerSub.innerHTML = 'Your world, Your word! · 面向五款 Paradox 游戏的在线创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。<div style="margin-top:4px"><a href="https://github.com/sdloghub/paradox-ai-translator" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:500">GitHub: sdloghub/paradox-ai-translator</a></div>';
+  }
   $('mode').className = '';
   $('mode').innerHTML = '<a href="#" id="tutorial_help">不会使用？</a>';
   $('tutorial_help').onclick = event => { event.preventDefault(); window.openWorkshopTutorial(); };
@@ -215,6 +217,78 @@
   };
   $('close_upload_mod').onclick = () => dialog.close();
   $('cancel_upload_mod').onclick = () => dialog.close();
+
+  // 网页版浏览器文件导入对话框
+  const importDialog = document.createElement('dialog');
+  importDialog.id = 'upload_import_dialog';
+  importDialog.setAttribute('aria-labelledby', 'upload_import_title');
+  importDialog.innerHTML = `
+    <div class="row"><h2 id="upload_import_title" class="grow" style="margin:0">导入译文 / 缓存</h2><button id="close_upload_import" type="button">关闭</button></div>
+    <p class="sub" style="margin:10px 0 14px">选择本地中文本地化文件 (.yml)、哈希缓存 (.json) 或此前导出的 ZIP 包（最大 32 MB）。系统将提取匹配条目并导入当前 Mod 工作区。</p>
+    <label for="upload_import_file">选择本地文件</label>
+    <input id="upload_import_file" type="file" accept=".yml,.yaml,.json,.zip">
+    <label for="upload_import_provider" style="margin-top:12px">导入者名称（可留空自动命名）</label>
+    <input id="upload_import_provider" maxlength="80" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
+    <p id="upload_import_status" class="sub" role="status" style="margin:10px 0 0"></p>
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button id="cancel_upload_import" type="button">取消</button>
+      <button id="confirm_upload_import" type="button" class="primary">确认导入</button>
+    </div>`;
+  document.body.appendChild(importDialog);
+
+  $('close_upload_import').onclick = () => importDialog.close();
+  $('cancel_upload_import').onclick = () => importDialog.close();
+
+  let importTarget = null;
+  // 网页版拦截原导入按钮：调用浏览器文件选择
+  $('import_btn').onclick = () => {
+    if (!selected) { toast('请先在左侧选择一个 Mod'); return; }
+    importTarget = selected;
+    $('upload_import_status').textContent = '';
+    $('upload_import_file').value = '';
+    importDialog.showModal();
+  };
+
+  $('confirm_upload_import').onclick = async () => {
+    if (!selected) { toast('请先在左侧选择一个 Mod'); return; }
+    const file = $('upload_import_file').files[0];
+    if (!file) { $('upload_import_status').textContent = '请选择要导入的文件'; return; }
+    if (file.size > 32 * 1024 * 1024) { $('upload_import_status').textContent = '文件最大为 32 MB'; return; }
+    $('confirm_upload_import').disabled = true;
+    $('upload_import_status').textContent = '正在上传文件并解析条目，请稍候…';
+    try {
+      const query = new URLSearchParams({
+        id: importTarget,
+        provider: $('upload_import_provider').value.trim(),
+        filename: file.name
+      });
+      const response = await fetch('/api/upload-import?' + query, {
+        method: 'POST',
+        headers: {'X-App-Token': token, 'Content-Type': 'application/octet-stream'},
+        body: file
+      });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || '导入失败');
+      while (true) {
+        const current = await api('state');
+        const job = current.jobs?.[importTarget];
+        if (!job || job.id !== result.job_id) throw Error('导入任务状态已改变，请检查任务记录。');
+        if (!job.running) {
+          if (job.error) throw Error(job.error);
+          toast(`导入完成：新增 ${job.result.imported} 条，跳过 ${job.result.rejected} 条。`);
+          break;
+        }
+        $('upload_import_status').textContent = '正在比对原文并导入译文…';
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      importDialog.close();
+      await refresh();
+    } catch (error) {
+      $('upload_import_status').textContent = error.message;
+    } finally {
+      $('confirm_upload_import').disabled = false;
+    }
+  };
 
   for (const id of ['open', 'open_aggregate', 'open_mod_export']) $(id).hidden = true;
   $('pick_file').hidden = true;

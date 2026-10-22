@@ -59,6 +59,55 @@ class GuestPrivacyTests(unittest.TestCase):
         self.assertFalse(guest.busy())
         self.assertIsNone(guest.jobs['281990:123']['error'])
 
+    def upload_translation(self, cookie, filename, data):
+        import urllib.parse
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
+        query = urllib.parse.urlencode({'id': '281990:123', 'filename': filename})
+        conn.request('POST', '/api/upload-import?' + query, data,
+                     {'Cookie': cookie, 'X-App-Token': self.server.token})
+        response = conn.getresponse()
+        status, body = response.status, response.read()
+        conn.close()
+        return status, body
+
+    def test_browser_translation_upload_yaml_zip_and_private_workspace(self):
+        import io
+        import zipfile
+        cookie, guest = self.guest()
+        _, other = self.guest()
+        lookup(guest, 'https://steamcommunity.com/sharedfiles/filedetails/?id=123')
+        translated = 'l_simp_chinese:\n key:0 "你好"\n'.encode()
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, 'w') as target:
+            target.writestr('localisation/test.yaml', translated)
+        for filename, data in [('test.yaml', translated), ('test.zip', archive.getvalue())]:
+            with self.subTest(filename=filename):
+                status, body = self.upload_translation(cookie, filename, data)
+                self.assertEqual(status, 202, body)
+                for _ in range(100):
+                    if not guest.busy(): break
+                    time.sleep(.02)
+                self.assertIsNone(guest.jobs['281990:123']['error'])
+                self.assertIn('281990:123', guest.analyzed_mod_ids)
+                self.assertEqual(guest.get_mod('281990:123')['counts']['cached'], 1)
+                self.assertFalse(list((guest.data_dir / 'uploads').iterdir()))
+        self.assertFalse(other.inventory)
+        self.assertFalse(contributions(other))
+
+    def test_empty_translation_reports_error_and_failed_start_cleans_upload(self):
+        cookie, guest = self.guest()
+        lookup(guest, 'https://steamcommunity.com/sharedfiles/filedetails/?id=123')
+        status, _ = self.upload_translation(cookie, 'empty.yml', b'l_simp_chinese:\n')
+        self.assertEqual(status, 202)
+        for _ in range(100):
+            if not guest.busy(): break
+            time.sleep(.02)
+        self.assertIn('未找到', guest.jobs['281990:123']['error'])
+        with patch.object(guest, 'start', side_effect=ValueError('busy')):
+            status, _ = self.upload_translation(cookie, 'test.yml', b'content')
+        self.assertEqual(status, 400)
+        self.assertFalse(list((guest.data_dir / 'uploads').iterdir()))
+
     def test_guest_workspaces_are_isolated_and_config_save_is_admin_only(self):
         cookie1, first = self.guest()
         cookie2, second = self.guest()
