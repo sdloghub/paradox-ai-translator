@@ -7,6 +7,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-workshop/
 venv/
 .pytest_cache/
 .coverage

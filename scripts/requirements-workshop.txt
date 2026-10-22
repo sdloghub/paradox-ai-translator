@@ -1,0 +1,2 @@
+# Optional CLI dependency; not needed by the translator server or desktop app.
+playwright>=1.48,<2
