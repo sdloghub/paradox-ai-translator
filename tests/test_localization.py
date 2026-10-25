@@ -44,7 +44,9 @@ class LanguageTests(unittest.TestCase):
         self.translated(self.base, '新的开始 $VALUE$')
         outputs = []
         for language, value, slot in [('zh-TW', '新的開始 $VALUE$', 'simp_chinese'),
-                                      ('ru', 'Новое начало $VALUE$', 'russian')]:
+                                      ('ru', 'Новое начало $VALUE$', 'russian'),
+                                      ('ko', '새로운 시작 $VALUE$', 'korean'),
+                                      ('ja', '新たな始まり $VALUE$', 'japanese')]:
             service = localization.workspace(self.base, language)
             self.assertEqual(service.config()['target_language'], language)
             self.assertNotEqual(service.database, self.base.database)
@@ -63,7 +65,7 @@ class LanguageTests(unittest.TestCase):
             result = service.generate_mod(self.identifier, introduction='Manual description')
             outputs.append(result['mod_path'])
             self.assertEqual(json.loads((Path(result['mod_path']) / 'source-manifest.json').read_text())['target_language'], language)
-        self.assertNotEqual(*outputs)
+        self.assertEqual(len(set(outputs)), len(outputs))
         self.assertEqual(self.source.read_bytes(), self.original)
         self.assertEqual(localization.current_language(), 'zh-CN')
 
@@ -88,12 +90,17 @@ class LanguageTests(unittest.TestCase):
         self.assertFalse(request.valid_translation('Hello $VALUE$', 'Привет', 'ru'))
         self.assertFalse(request.valid_translation('Hello', '你好', 'ru'))
         self.assertFalse(request.valid_translation('Hello', 'Привет', 'zh-CN'))
+        self.assertTrue(request.valid_translation('Hello $VALUE$', '안녕하세요 $VALUE$', 'ko'))
+        self.assertTrue(request.valid_translation('Hello $VALUE$', 'こんにちは $VALUE$', 'ja'))
+        self.assertFalse(request.valid_translation('Hello', '你好', 'ko'))
+        self.assertFalse(request.valid_translation('Hello', 'Hello', 'ja'))
+        self.assertFalse(request.valid_translation('Hello $VALUE$', 'こんにちは', 'ja'))
         self.assertEqual(localization.current_language(), 'zh-CN')
 
     def test_prompts_differ_and_keep_protection_and_game_guidance(self):
         for game in ('st', 'hoi4', 'eu4', 'ck3', 'vic3', 'para'):
             prompts = [request.findrule(game, code) for code in localization.LANGUAGES]
-            self.assertEqual(len(set(prompts)), 3)
+            self.assertEqual(len(set(prompts)), len(localization.LANGUAGES))
             for prompt in prompts:
                 for token in ('---SEPARATOR---', '$VALUE', '[', '£', '§', '\\n'):
                     self.assertIn(token, prompt)
@@ -115,7 +122,7 @@ class LanguageTests(unittest.TestCase):
         root = Path(app.__file__).parent
         catalogs = json.loads((root / 'ui_languages.json').read_text())
         self.assertEqual(set(catalogs), set(localization.LANGUAGES))
-        for language in ('ru', 'zh-TW'):
+        for language in ('ru', 'zh-TW', 'ko', 'ja'):
             self.assertTrue(all(catalogs[language].get(text) for text in
                 ('开始 AI 翻译', '扫描此 Mod', '导入译文', '生成翻译 Mod', 'API 与 Steam 库设置', '下一页')))
         for filename in ('packaging/WorkshopTranslator.spec', 'packaging/WorkshopTranslator-macOS.spec',
@@ -129,7 +136,7 @@ class LanguageTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-        for language, expected in [('ru', 200), ('zh-TW', 200), ('zh-CN', 200), ('en', 400)]:
+        for language, expected in [('ru', 200), ('zh-TW', 200), ('zh-CN', 200), ('ko', 200), ('ja', 200), ('en', 400)]:
             connection = http.client.HTTPConnection(*server.server_address)
             connection.request('GET', '/api/state', headers={
                 'X-App-Token': server.token, 'X-Translation-Language': language})

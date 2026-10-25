@@ -120,8 +120,13 @@ class ModExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '误用了原 Mod'):
             self.generate()
 
-    def test_default_hides_automatic_export_and_old_aggregate_stays_untouched(self):
-        self.assertFalse(self.service.config()['developer_mode'])
+    def test_local_default_enables_automatic_export(self):
+        self.assertTrue(self.service.config()['developer_mode'])
+        self.assertTrue(export(self.service,self.item,{},1)['enabled'])
+        self.assertTrue(documents_mod_root(self.service).exists())
+
+    def test_disabled_automatic_export_and_old_aggregate_stays_untouched(self):
+        self.service.save_config({'developer_mode':False})
         self.assertFalse(export(self.service,self.item,{},1)['enabled'])
         self.assertFalse(documents_mod_root(self.service).exists())
         legacy=self.service.data_dir/'aggregate_mods/281990/old.yml'

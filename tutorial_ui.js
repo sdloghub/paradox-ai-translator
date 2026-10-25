@@ -18,7 +18,7 @@
     ['5. 选择是否共享', '翻译完成后可自愿选择是否共享译文。署名留空即为匿名，模型由系统自动记录。', '#share_translation'],
     ['6. 下载汉化补丁', '点击「生成翻译 Mod」并下载 ZIP。先订阅原 Mod，再将汉化补丁排在原 Mod 之后加载。', '#generate_mod']
   ];
-  function isDev() { return !!(window.state && (window.state.dev_logged_in || window.state.config?.developer_mode)); }
+  function isDev() { return !window.serverWorkshopLinks; }
   function steps() { return window.serverWorkshopLinks ? online : local; }
   function clear() { highlighted?.classList.remove('tutorial-highlight'); highlighted = null; }
   function close() {
@@ -68,7 +68,7 @@
   let prompted = false;
   window.syncTutorialVisibility = () => {
     const dev = isDev();
-    if ($('open_tutorial')) $('open_tutorial').hidden = dev || !!window.serverWorkshopLinks;
+    if ($('open_tutorial')) $('open_tutorial').hidden = !!window.serverWorkshopLinks;
     if (dev) {
       clear();
       $('beginner_tutorial').hidden = true;
@@ -82,8 +82,5 @@
     }
   };
   if ($('open_tutorial')) $('open_tutorial').onclick = () => window.openWorkshopTutorial(0);
-  document.querySelectorAll('[data-workflow-step]').forEach(el => {
-    el.onclick = () => window.openWorkshopTutorial(Number(el.dataset.workflowStep) || 0);
-  });
   $('beginner_tutorial').setAttribute('aria-label', '分步新手教程');
 })();

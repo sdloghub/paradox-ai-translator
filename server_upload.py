@@ -71,6 +71,8 @@ def upload_mod(service, data, appid, uid):
             raise ValueError('ZIP 内未找到 localisation 或 localization 目录')
         destination.parent.mkdir(parents=True, exist_ok=True)
         root.rename(destination)
+    from server_workshop import remember_source
+    remember_source(service, appid, uid, destination)
     service.scan(lambda ids: {})
     return {'ok': True, 'id': f'{appid}:{uid}'}
 

@@ -1,6 +1,6 @@
 /* UI strings stay separate from Mod content; only the locale is persisted. */
 (() => {
-  const supported = ['zh-CN', 'zh-TW', 'ru'];
+  const supported = ['zh-CN', 'zh-TW', 'ru', 'ko', 'ja'];
   let language = 'zh-CN';
   try { language = localStorage.getItem('workshop_language') || language; } catch (_) {}
   if (!supported.includes(language)) language = 'zh-CN';
@@ -41,13 +41,14 @@
     }
     if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE) return;
     if (node.nodeType === Node.ELEMENT_NODE) {
-      if (node.matches(excluded)) return;
+      if (node.matches(excluded) && node.tagName !== 'TEXTAREA') return;
       for (const name of ['title', 'placeholder', 'aria-label']) {
         if (node.hasAttribute(name)) {
           const value = node.getAttribute(name), rendered = text(value);
           if (value !== rendered) node.setAttribute(name, rendered);
         }
       }
+      if (node.tagName === 'TEXTAREA') return;
     }
     for (const child of node.childNodes) translateNode(child);
   }
@@ -65,7 +66,10 @@
       attributes:true, attributeFilter:['title', 'placeholder', 'aria-label']});
   }
   const hint = document.getElementById('language_hint');
-  if (hint) hint.textContent = language === 'zh-TW' ? '繁體中文使用遊戲的簡體中文語言槽；請在遊戲內選擇中文。' : language === 'ru' ? 'Язык перевода: русский. Выберите русский язык в игре.' : '目标语言：简体中文';
+  if (hint) {
+    hint.dataset.i18nSkip = '';
+    hint.textContent = {'zh-CN':'目标语言：简体中文', 'zh-TW':'繁體中文使用遊戲的簡體中文語言槽；請在遊戲內選擇中文。', 'ru':'Язык перевода: русский. Выберите русский язык в игре.', 'ko':'번역 언어: 한국어. 게임의 한국어 지원 여부를 확인하세요.', 'ja':'翻訳先：日本語。ゲームの日本語対応を確認してください。'}[language];
+  }
   const select = document.getElementById('workshop_language');
   if (select) {
     select.value = language;

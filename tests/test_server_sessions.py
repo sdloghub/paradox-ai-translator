@@ -91,7 +91,7 @@ class GuestPrivacyTests(unittest.TestCase):
                 self.assertIn('281990:123', guest.analyzed_mod_ids)
                 self.assertEqual(guest.get_mod('281990:123')['counts']['cached'], 1)
                 self.assertFalse(list((guest.data_dir / 'uploads').iterdir()))
-        self.assertFalse(other.inventory)
+        self.assertEqual(other.analyze("281990:123")["translated"], 0)
         self.assertFalse(contributions(other))
 
     def test_empty_translation_reports_error_and_failed_start_cleans_upload(self):
@@ -177,12 +177,58 @@ class GuestPrivacyTests(unittest.TestCase):
         self.assertEqual(saved_translation(self.root, saved['id'])[1].read_bytes(), b'invalid ZIP')
         self.assertEqual(len(saved_translations(self.root)), 1)
 
+    def test_catalog_access_revocation_and_admin_upload_guard(self):
+        cookie, guest = self.guest()
+        identifier = '281990:123'
+        self.assertIn(identifier, guest.inventory)
+        developer = self.developer_cookie()
+        status, _, data = self.call('/api/state', cookie=developer)
+        self.assertIn(identifier, {m['id'] for m in json.loads(data)['mods']})
+        # Raw upload is rejected before its body is parsed or extracted.
+        status, _, _ = self.call('/api/upload-mod?appid=281990&uid=999', {}, cookie)
+        self.assertEqual(status, 403)
+        status, _, _ = self.call('/api/mod-access', {'id':identifier, 'guest_allowed':False}, cookie)
+        self.assertEqual(status, 403)
+        status, _, _ = self.call('/api/mod-access', {'id':identifier, 'guest_allowed':False}, developer)
+        self.assertEqual(status, 200)
+        for endpoint, body in [('/api/entries', {'id':identifier}),
+                               ('/api/workshop-lookup', {'link':'https://steamcommunity.com/sharedfiles/filedetails/?id=123'}),
+                               ('/api/workshop-download', {'link':'https://steamcommunity.com/sharedfiles/filedetails/?id=123'}),
+                               ('/api/export-package', {'id':identifier})]:
+            status, _, _ = self.call(endpoint, body, cookie)
+            self.assertEqual(status, 400, endpoint)
+        status, _, data = self.call('/api/state', cookie=cookie)
+        self.assertFalse(json.loads(data)['mods'])
+        from localization import workspace
+        with self.assertRaises(ValueError):
+            workspace(guest, 'ja').get_mod(identifier)
+        status, _, data = self.call('/api/state', cookie=developer)
+        self.assertEqual(json.loads(data)['mods'][0]['guest_allowed'], False)
+        # Permission is persistent and shared by every language workspace.
+        from server_workshop import guest_allowed
+        restarted = app.WorkshopService(self.root.data_dir)
+        self.assertFalse(guest_allowed(restarted, identifier))
+        self.assertFalse(guest_allowed(workspace(self.root, 'ko'), identifier))
+        status, _, _ = self.call('/api/mod-access', {'id':identifier, 'guest_allowed':True}, developer)
+        self.assertEqual(status, 200)
+        status, _, data = self.call('/api/state', cookie=cookie)
+        self.assertTrue(json.loads(data)['mods'])
+
+    def test_short_explicit_translator_password(self):
+        with patch.dict(os.environ, {'TRANSLATOR_PASSWORD':'paradox'}):
+            server = app.AppServer(('127.0.0.1', 0), self.root)
+        self.addCleanup(server.server_close)
+        handler = object.__new__(app.Handler)
+        handler.server = server
+        self.assertTrue(handler.verify_dev_credentials('translator', 'paradox'))
+        self.assertFalse(handler.verify_dev_credentials('translator', 'wrong'))
+
     def test_guest_workspaces_are_isolated_and_config_save_is_admin_only(self):
         cookie1, first = self.guest()
         cookie2, second = self.guest()
         self.assertNotEqual(first.data_dir, second.data_dir)
         self.translate(first)
-        self.assertFalse(second.inventory)
+        self.assertEqual(second.analyze("281990:123")["translated"], 0)
         self.assertFalse(self.root.inventory)
         status, _, _ = self.call('/api/config', {'api_key': 'evil'}, cookie1)
         self.assertEqual(status, 403)

@@ -6,7 +6,7 @@ import zipfile
 
 PROGRAM_FILES = {'WorkshopTranslator.exe', 'workshop_app.py', 'paradox.py',
                  'request.py', 'translation_cache.py', 'workshop_ui.html', 'entry_browser.py', 'entry_browser_ui.js', 'aggregate_export.py', 'mod_export.py',
-                 'server_sessions.py', 'server_workshop.py', 'server_upload.py', 'server_ui.js', 'tutorial_ui.js', 'localization.py', 'localization_ui.js', 'ui_languages.json', 'rules.json', 'requirements.txt', 'SHA256SUMS.txt',
+                 'server_sessions.py', 'server_workshop.py', 'server_upload.py', 'server_codex.py', 'server_terminal.py', 'server_ui.js', 'tutorial_ui.js', 'localization.py', 'localization_ui.js', 'ui_languages.json', 'rules.json', 'requirements.txt', 'SHA256SUMS.txt',
                  'README.md', 'Windows使用说明.md'}
 
 

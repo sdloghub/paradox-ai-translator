@@ -40,12 +40,13 @@
   window.startServerTranslation = async () => {
     const mod = state?.mods.find(m => m.id === selected);
     if (!mod) return;
+    const useAI = $('use_ai').checked;
     const settings = {base_url:$('base_url').value.trim(), model:$('model').value.trim(),
       api_key:$('api_key').value.trim(), batch_size:Number($('batch_size').value), concurrency:Number($('concurrency').value)};
-    if (!settings.api_key && mod.counts?.untranslated > 0) { toast('请先在「本次翻译 API」填写自己的 API Key。'); return; }
-    if (!await ask(`翻译「${mod.title}」？英文文本将发往 ${settings.base_url}，模型为 ${settings.model}，可能产生费用。密钥不保存；译文只在你的工作区内处理，完成后由你选择是否共享。`, '开始AI翻译')) return;
+    if (useAI && !settings.api_key && mod.counts?.untranslated > 0) { toast('请先在「本次翻译 API」填写自己的 API Key。'); return; }
+    if (!await ask(useAI ? `翻译「${mod.title}」？英文文本将发往 ${settings.base_url}，模型为 ${settings.model}，可能产生费用。密钥不保存；译文只在你的工作区内处理，完成后由你选择是否共享。` : `仅导入缓存和本机已有中文到「${mod.title}」？不调用任何 API，缺失条目保留英文。`, '确认翻译')) return;
     try {
-      await api('translate', {id:selected, api:settings});
+      await api('translate', {id:selected, api:settings, use_ai:useAI});
       $('api_key').value = '';
       settings.api_key = '';
       await refresh();
@@ -83,9 +84,100 @@
     const job = state.jobs?.[selected];
     if (job?.kind === 'translate' && job.result && !job.error && !job.running) offer(selected, job);
   };
+  const codexPanel = document.createElement('section');
+  codexPanel.className = 'card';
+  codexPanel.hidden = true;
+  codexPanel.innerHTML = `<h2>开发者 · 服务器 Codex CLI</h2><p class="sub">使用服务器的 Codex 登录。任务只读运行，最长 10 分钟；不会自动发送翻译文件或 API Key。</p><button id="codex_connect">检查连接</button><p id="codex_status" role="status">尚未检查连接</p><label for="codex_prompt">任务</label><textarea id="codex_prompt" rows="4" maxlength="12000" placeholder="输入要交给 Codex 的任务"></textarea><div class="row"><button id="codex_run">执行</button><button id="codex_stop" disabled>停止</button></div><pre id="codex_output" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto" aria-live="polite"></pre>`;
+  $('developer_exports').after(codexPanel);
+  let codexPolling = false;
+  async function codexUpdate(checkLogin = false) {
+    if (!state?.dev_logged_in || codexPolling) return;
+    codexPolling = true;
+    try {
+      const result = await api('codex-status', {check_login:checkLogin});
+      if (checkLogin) $('codex_status').textContent = !result.installed ? '服务器未安装 Codex CLI' : result.logged_in ? '已连接服务器 Codex CLI' : 'CLI 已安装，网站服务用户尚未登录';
+      if (result.running) $('codex_status').textContent = '正在执行…';
+      else if (result.output && !result.error) $('codex_status').textContent = '执行完成';
+      if (result.error) $('codex_status').textContent = result.error;
+      $('codex_run').disabled = result.running;
+      $('codex_stop').disabled = !result.running;
+      $('codex_output').textContent = result.output || '';
+    } catch (error) { $('codex_status').textContent = error.message; }
+    finally { codexPolling = false; }
+  }
+  $('codex_connect').onclick = () => codexUpdate(true);
+  $('codex_run').onclick = async () => {
+    $('codex_run').disabled = true;
+    try { await api('codex-start', {prompt:$('codex_prompt').value}); await codexUpdate(); }
+    catch (error) { $('codex_status').textContent = error.message; $('codex_run').disabled = false; }
+  };
+  $('codex_stop').onclick = async () => {
+    try { await api('codex-stop', {}); await codexUpdate(); }
+    catch (error) { $('codex_status').textContent = error.message; }
+  };
+  setInterval(() => { if (!codexPanel.hidden) codexUpdate(); }, 2000);
+  const terminalPanel = document.createElement('section');
+  terminalPanel.className = 'card wide';
+  terminalPanel.hidden = true;
+  terminalPanel.innerHTML = `<h2>开发者 · 服务器终端</h2><p class="sub"><span>服务器 IP</span>：<span id="terminal_ip">—</span> · <span>服务器地区</span>：<span id="terminal_region">—</span></p><p class="sub">使用当前开发者登录连接服务器，以网站服务用户执行命令；每次连接最长 15 分钟。支持命令行输入及 Ctrl+C，不支持全屏编辑器。</p><div class="row"><button id="terminal_connect" type="button">连接终端</button><button id="terminal_disconnect" type="button" disabled>断开连接</button><button id="terminal_interrupt" type="button" disabled>中断命令</button><span id="terminal_status" role="status">未连接</span></div><pre id="terminal_output" tabindex="0" aria-label="服务器终端输出" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#17191d;color:#e6e6e6;padding:16px;min-height:180px;max-height:480px;overflow:auto;font:13px/1.6 monospace"></pre><form id="terminal_form"><label for="terminal_input">终端输入</label><div class="row"><input id="terminal_input" class="grow" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="8191" placeholder="输入命令后按 Enter" disabled><button id="terminal_send" type="submit" disabled>发送</button></div></form>`;
+  document.querySelector('main footer').before(terminalPanel);
+  let terminalPolling = false;
+  function renderTerminal(result) {
+    const connected = !!result.connected;
+    $('terminal_status').textContent = connected ? '已连接' : '未连接';
+    $('terminal_connect').disabled = connected;
+    for (const id of ['terminal_disconnect', 'terminal_interrupt', 'terminal_input', 'terminal_send']) $(id).disabled = !connected;
+    if ('ip' in result) $('terminal_ip').textContent = result.ip;
+    if ('region' in result) $('terminal_region').textContent = result.region;
+    if ('output' in result) {
+      const output = $('terminal_output');
+      const bottom = output.scrollHeight - output.scrollTop - output.clientHeight < 40;
+      // Render untrusted command output only as text. Strip terminal control sequences.
+      output.textContent = result.output.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\r/g, '');
+      if (bottom) output.scrollTop = output.scrollHeight;
+    }
+  }
+  async function terminalAction(action, body = {}) {
+    try {
+      const result = await api('terminal-' + action, body);
+      if (state?.dev_logged_in) renderTerminal(result);
+    } catch (error) { $('terminal_status').textContent = error.message; }
+  }
+  $('terminal_connect').onclick = async () => { await terminalAction('connect'); $('terminal_input').focus(); };
+  $('terminal_disconnect').onclick = () => terminalAction('disconnect');
+  $('terminal_interrupt').onclick = () => terminalAction('input', {input:'\x03'});
+  $('terminal_form').onsubmit = async event => {
+    event.preventDefault();
+    const input = $('terminal_input').value;
+    $('terminal_input').value = '';
+    await terminalAction('input', {input:input + '\n'});
+  };
+  $('terminal_input').onkeydown = event => {
+    if (event.ctrlKey && event.key.toLowerCase() === 'c') { event.preventDefault(); terminalAction('input', {input:'\x03'}); }
+  };
+  async function terminalUpdate() {
+    if (!state?.dev_logged_in || terminalPanel.hidden || terminalPolling || document.hidden) return;
+    terminalPolling = true;
+    try { await terminalAction('status'); } finally { terminalPolling = false; }
+  }
+  setInterval(terminalUpdate, 1000);
+
   window.syncServerUI = () => {
     if (!state) return;
     const developer = !!state.dev_logged_in;
+    $('open_upload_mod').hidden = !developer;
+    if (!developer && $('upload_mod_dialog').open) $('upload_mod_dialog').close();
+    const currentMod = state.mods.find(mod => mod.id === selected);
+    $('mod_access_control').hidden = !developer || !currentMod;
+    $('mod_guest_access').checked = currentMod?.guest_allowed !== false;
+    codexPanel.hidden = !developer;
+    const terminalWasHidden = terminalPanel.hidden;
+    terminalPanel.hidden = !developer;
+    if (developer && terminalWasHidden) terminalUpdate();
+    if (!developer) {
+      renderTerminal({connected:false, output:'', ip:'—', region:'—'});
+    }
+    if (!developer) { $('codex_output').textContent = ''; $('codex_prompt').value = ''; }
     settings.querySelectorAll('[data-saved-setting]').forEach(el => el.hidden = !developer);
     $('dev_login_btn').textContent = developer ? '开发者已登录 · 退出' : '开发者登录';
     $('api_key').placeholder = '每次翻译前填写，不保存';
@@ -179,10 +271,25 @@
 
   const triggerBtn = document.createElement('button');
   triggerBtn.id = 'open_upload_mod';
+  triggerBtn.hidden = true;
   triggerBtn.type = 'button';
   triggerBtn.className = 'upload-trigger-btn';
   triggerBtn.textContent = '上传 Mod';
   $('scan').before(triggerBtn);
+
+  const accessControl = document.createElement('label');
+  accessControl.id = 'mod_access_control';
+  accessControl.hidden = true;
+  accessControl.innerHTML = '<input type="checkbox" id="mod_guest_access"> 向访客开放此 Mod（默认开放）';
+  $('actions').appendChild(accessControl);
+  $('mod_guest_access').onchange = async () => {
+    $('mod_guest_access').disabled = true;
+    try {
+      await api('mod-access', {id:selected, guest_allowed:$('mod_guest_access').checked});
+      await refresh();
+    } catch (error) { toast(error.message); await refresh(); }
+    finally { $('mod_guest_access').disabled = false; }
+  };
 
   const dialog = document.createElement('dialog');
   dialog.id = 'upload_mod_dialog';

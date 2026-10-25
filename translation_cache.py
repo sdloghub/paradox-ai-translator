@@ -77,8 +77,13 @@ def comparable_file(name):
         parts.pop(0)
     if parts:
         parts.pop(0)
-    parts = [part for part in parts if part not in ('english', 'simp_chinese', 'replace')]
-    return '/'.join(parts).replace('l_simp_chinese', 'l_english')
+    from localization import LANGUAGES
+    slots = {item['slot'] for item in LANGUAGES.values()}
+    parts = [part for part in parts if part not in {'english', 'replace', *slots}]
+    result = '/'.join(parts)
+    for slot in slots:
+        result = result.replace('l_' + slot, 'l_english')
+    return result
 
 
 def _parse_json_candidates(raw_text):
@@ -96,15 +101,18 @@ def _parse_json_candidates(raw_text):
 
 def _parse_yml_candidates(filename, data, game):
     text = data.decode('utf-8-sig')
-    from localization import current_language
+    from localization import current_language, slot
     language = current_language()
-    target_header = 'russian' if language == 'ru' else 'simp_chinese'
+    target_header = slot()
+    headers = re.findall(r'^\s*l_([A-Za-z_]+)\s*:', text, re.M)
+    if headers and target_header not in headers and game != 'eu4':
+        return []
     chinese_header = bool(re.search(r'^\s*l_' + target_header + r'\s*:', text, re.M))
     result = []
     for entry in entries({str(filename): data}, game, strict=False):
         if not entry['text'].strip():
             continue
-        if re.search(r'[\u0400-\u052f]' if language == 'ru' else r'[\u3400-\u9fff]', entry['text']) or (chinese_header and request.is_token_only(entry['text'])):
+        if re.search(request.target_pattern(language), entry['text']) or (chinese_header and request.is_token_only(entry['text'])):
             if chinese_header or game == 'eu4' or not re.search(r'[A-Za-z]{2,}', request.TOKENS.sub('', entry['text'])):
                 result.append({**entry, 'target_language': language})
     return result

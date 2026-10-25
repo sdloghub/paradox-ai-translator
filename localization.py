@@ -11,6 +11,8 @@ LANGUAGES = {
     # Paradox has no Traditional Chinese slot; use its Chinese language slot.
     'zh-TW': {'name': '繁體中文', 'slot': 'simp_chinese'},
     'ru': {'name': 'Русский', 'slot': 'russian'},
+    'ko': {'name': '한국어', 'slot': 'korean'},
+    'ja': {'name': '日本語', 'slot': 'japanese'},
 }
 _language = ContextVar('translation_language', default='zh-CN')
 

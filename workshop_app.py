@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.22-import.3'
+APP_VERSION = '2026.10.23-terminal.1'
 
 
 def program_directory():
@@ -71,7 +71,7 @@ GAMES = {'281990': ('st', '群星'), '394360': ('hoi4', '钢铁雄心4'),
          '529340': ('vic3', '维多利亚3')}
 DEFAULT_CONFIG = {'api_format': 'openai', 'provider': '', 'config_name': '', 'base_url': 'https://api.openai.com/v1',
                   'api_key': '', 'model': 'gpt-4.1-mini', 'batch_size': 10,
-                  'concurrency': 3, 'steam_libraries': [], 'aggregate_export': True, 'developer_mode': False}
+                  'concurrency': 3, 'steam_libraries': [], 'aggregate_export': True, 'developer_mode': True}
 
 
 def atomic_bytes(path, data, private=False):
@@ -313,6 +313,8 @@ class WorkshopService:
             'zh-CN': ('新的开始', '获得 $VALUE$ 政治点数。', '演示译文：'),
             'zh-TW': ('新的開始', '獲得 $VALUE$ 政治點數。', '示範譯文：'),
             'ru': ('Новое начало', 'Получить $VALUE$ политической власти.', 'Пример перевода: '),
+            'ko': ('새로운 시작', '$VALUE$ 정치력을 획득합니다.', '번역 예시: '),
+            'ja': ('新たな始まり', '$VALUE$ の政治力を獲得する。', '翻訳例：'),
         }[language]
         translations = dict(zip(('A new beginning', 'Gain $VALUE$ political power.'), known[:2]))
         return [{'text': translations.get(text, known[2] + text), 'success': True, 'error': None} for text in texts]
@@ -336,6 +338,8 @@ class WorkshopService:
     def public_config(self):
         cfg = self.config()
         cfg['has_api_key'] = bool(cfg.pop('api_key', ''))
+        if not getattr(self, 'server_mode', False):
+            cfg['developer_mode'] = True
         return cfg
 
     def config_storage(self):
@@ -699,6 +703,9 @@ class WorkshopService:
                 ORDER BY v.id DESC''')]
 
     def get_mod(self, identifier):
+        if getattr(self, 'server_mode', False):
+            from server_workshop import require_access
+            require_access(self, identifier)
         item = self.inventory.get(identifier)
         if item is None:
             raise ValueError('请先扫描并选择当前已安装的 Mod')
@@ -949,23 +956,23 @@ class WorkshopService:
         self.analyze(identifier)
         return build(self, self.get_mod(identifier), title, introduction)
 
-    def translate(self, identifier, translator=None, deploy=True, provider=None):
+    def translate(self, identifier, translator=None, deploy=True, provider=None, use_ai=True):
         item = self.get_mod(identifier)
         self.analyze(identifier)
         config = self.config()
         if self.demo and translator is None:
             translator = self.demo_translate
-        if translator is None and not config['api_key'] and item['counts']['untranslated']:
+        if use_ai and translator is None and not config['api_key'] and item['counts']['untranslated']:
             raise ValueError('请先在设置中保存 API Key')
         try:
             import paradox
             import request
         except ImportError as error:
             raise RuntimeError('请先运行启动脚本安装依赖，或安装 requirements.txt') from error
-        if translator is None:
+        if use_ai and translator is None:
             translator = partial(request.request_deepseek_batch, config=config,
                                  batch_size=config['batch_size'], pool_size=config['concurrency'], progress=self.log)
-        label = self.source_label('AI', config.get('provider', '') if provider is None else provider) if item['counts']['untranslated'] else '缓存复用'
+        label = (self.source_label('AI', config.get('provider', '') if provider is None else provider) if use_ai and item['counts']['untranslated'] else '缓存复用')
         sources = self.original_sources(item)
         if not sources:
             raise ValueError('该 Mod 没有可识别的英文 localisation/localization YML 文件')
@@ -1322,6 +1329,10 @@ class AppServer(ThreadingHTTPServer):
         if getattr(service, 'server_mode', False):
             from server_sessions import forget_saved_keys
             forget_saved_keys(service)
+        from server_codex import CodexConsole
+        self.codex_console = CodexConsole(service.data_dir)
+        self.terminals = {}
+        self.terminal_lock = threading.RLock()
         self.login = None
         self.sessions = {}
         self.login_lock = threading.Lock()
@@ -1339,8 +1350,8 @@ class AppServer(ThreadingHTTPServer):
                 except (ValueError, OSError):
                     password = ''
         if getattr(service, 'server_mode', False):
-            if len(password) < 16:
-                raise ValueError('服务器模式需要至少 16 位的 TRANSLATOR_PASSWORD')
+            if len(password) < 6:
+                raise ValueError('服务器模式需要至少 6 位的 TRANSLATOR_PASSWORD')
             self.login = hashlib.sha256(password.encode()).digest()
             self.public_origin = os.environ.get('TRANSLATOR_PUBLIC_ORIGIN', '').rstrip('/')
             if self.public_origin and not re.fullmatch(r'https://[a-z0-9.-]+', self.public_origin):
@@ -1508,9 +1519,15 @@ class Handler(BaseHTTPRequestHandler):
                     cfg.update(provider='', config_name='', steam_libraries=[], developer_mode=False)
             from server_sessions import contributions
             from server_upload import saved_translations
-            return self.send(200, {'config': cfg, 'profiles': service.profiles() if not is_server or dev_logged_in else [], 'mods': list(service.inventory.values()),
-                                   'shared_translations': contributions(service) if is_server else [],
-                                   'history': service.history(), 'analyzed_mod_ids': sorted(service.analyzed_mod_ids), 'job': service.status(), 'jobs': service.task_statuses(), 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
+            from server_workshop import sync_sources, guest_allowed
+            if is_server:
+                sync_sources(service)
+            visible = lambda identifier: not is_server or dev_logged_in or guest_allowed(service, identifier)
+            mods = [{**item, 'guest_allowed': guest_allowed(service, item['id'])} if is_server else item
+                    for item in list(service.inventory.values()) if visible(item['id'])]
+            return self.send(200, {'config': cfg, 'profiles': service.profiles() if not is_server or dev_logged_in else [], 'mods': mods,
+                                   'shared_translations': [row for row in contributions(service) if visible(row['mod_id'])] if is_server else [],
+                                   'history': [row for row in service.history() if visible(row['mod_id'])], 'analyzed_mod_ids': sorted(i for i in service.analyzed_mod_ids if visible(i)), 'job': service.status(), 'jobs': {i:j for i,j in service.task_statuses().items() if i == '__global__' or visible(i)}, 'data_dir': str(service.data_dir), 'config_storage': service.config_storage(), 'demo': service.demo,
                                    'app_version': APP_VERSION, 'program_dir': str(program_directory()),
                                    'dev_logged_in': dev_logged_in, 'target_language': service.target_language,
                                    'saved_imports': saved_translations(service) if is_server and dev_logged_in else [],
@@ -1535,6 +1552,10 @@ class Handler(BaseHTTPRequestHandler):
             with self.server.login_lock:
                 if session:
                     self.server.sessions.pop(session.value, None)
+                    with self.server.terminal_lock:
+                        terminal = self.server.terminals.pop(session.value, None)
+                        if terminal:
+                            terminal.disconnect()
             if self.server.service.config().get('developer_mode'):
                 try:
                     self.server.service.save_config({'developer_mode': False})
@@ -1554,6 +1575,8 @@ class Handler(BaseHTTPRequestHandler):
         service = self.service
         try:
             if self.path.startswith('/api/upload-mod?') and getattr(service, 'server_mode', False):
+                if not self.is_dev_logged_in():
+                    return self.send(403, {'error': '仅管理员可上传原 Mod'})
                 from server_upload import upload_mod, MAX_UPLOAD
                 length = int(self.headers.get('Content-Length', '0'))
                 if not 0 < length <= MAX_UPLOAD:
@@ -1612,6 +1635,55 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError('请求格式错误')
+            if self.path == '/api/mod-access' and getattr(service, 'server_mode', False):
+                if not self.is_dev_logged_in():
+                    return self.send(403, {'error': '仅管理员可修改访客访问权限'})
+                from server_workshop import set_guest_access
+                return self.send(200, set_guest_access(service, body.get('id'), body.get('guest_allowed')))
+            if getattr(service, 'server_mode', False) and body.get('id'):
+                from server_workshop import require_access
+                require_access(service, body['id'])
+            if self.path.startswith('/api/terminal-'):
+                if not getattr(self.server.service, 'server_mode', False) or not self.is_dev_logged_in():
+                    return self.send(403, {'error': '仅已登录开发者可使用服务器终端'})
+                from server_terminal import Terminal, server_info
+                from http.cookies import SimpleCookie
+                session_id = SimpleCookie(self.headers.get('Cookie', ''))['translator_session'].value
+                with self.server.login_lock, self.server.terminal_lock:
+                    for key in list(self.server.terminals):
+                        if self.server.sessions.get(key, 0) <= time.time():
+                            self.server.terminals.pop(key).disconnect()
+                    terminal = self.server.terminals.get(session_id)
+                    if self.path == '/api/terminal-connect':
+                        if terminal is None:
+                            if len(self.server.terminals) >= 4:
+                                raise ValueError('终端连接已满，请先断开其他连接')
+                            terminal = Terminal(self.server.service.data_dir)
+                            self.server.terminals[session_id] = terminal
+                        return self.send(200, terminal.connect())
+                    if self.path == '/api/terminal-status':
+                        result = terminal.status() if terminal else {'connected': False, 'output': ''}
+                        result.update(server_info(self.server.service.data_dir))
+                        return self.send(200, result)
+                    if self.path == '/api/terminal-disconnect':
+                        if terminal:
+                            terminal.disconnect()
+                            self.server.terminals.pop(session_id, None)
+                        return self.send(200, {'connected': False})
+                    if self.path == '/api/terminal-input' and terminal:
+                        return self.send(200, terminal.write(body.get('input')))
+                    return self.send(400, {'error': '请先连接终端或检查操作'})
+            if self.path.startswith('/api/codex-'):
+                if not getattr(self.server.service, 'server_mode', False) or not self.is_dev_logged_in():
+                    return self.send(403, {'error': '仅已登录开发者可调用服务器 Codex'})
+                console = self.server.codex_console
+                if self.path == '/api/codex-status':
+                    return self.send(200, console.status(check_login=bool(body.get('check_login'))))
+                if self.path == '/api/codex-start':
+                    return self.send(202, console.start(body.get('prompt')))
+                if self.path == '/api/codex-stop':
+                    return self.send(200, console.stop())
+                return self.send(404, {'error': '未知 Codex 操作'})
             if self.path == '/api/import-saved' and getattr(service, 'server_mode', False):
                 if not self.is_dev_logged_in():
                     return self.send(403, {'error': '仅开发者可使用已保存译文'})
@@ -1700,11 +1772,12 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == '/api/translate':
                 identifier = body['id']
                 service.get_mod(identifier)
+                use_ai = body.get('use_ai', True)
                 config = None
                 if getattr(service, 'server_mode', False):
                     from server_sessions import transient_config
                     config = transient_config(service, body.get('api', {}))
-                service.start('translate', lambda: service.translate(identifier), identifier, config_override=config)
+                service.start('translate', lambda: service.translate(identifier, use_ai=use_ai), identifier, config_override=config)
             elif self.path == '/api/restore':
                 identifier, version = body['id'], int(body['version_id'])
                 service.get_mod(identifier)

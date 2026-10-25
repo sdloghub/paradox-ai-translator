@@ -13,6 +13,45 @@ from urllib.parse import urlsplit, parse_qs
 DOWNLOAD_LOCK = threading.Lock()
 
 
+def guest_allowed(service, identifier):
+    root = getattr(service, 'server_root', service)
+    with root.connect() as db:
+        db.execute('CREATE TABLE IF NOT EXISTS mod_access (mod_id TEXT PRIMARY KEY, guest_allowed INTEGER NOT NULL)')
+        row = db.execute('SELECT guest_allowed FROM mod_access WHERE mod_id=?', (identifier,)).fetchone()
+    return row is None or bool(row[0])
+
+
+def set_guest_access(service, identifier, allowed):
+    if type(allowed) is not bool:
+        raise ValueError('开放访问必须为勾选或不勾选')
+    service.get_mod(identifier)
+    root = getattr(service, 'server_root', service)
+    guest_allowed(root, identifier)
+    with root.connect() as db:
+        db.execute('INSERT OR REPLACE INTO mod_access VALUES (?,?)', (identifier, int(allowed)))
+    return {'ok': True, 'guest_allowed': allowed}
+
+
+def require_access(service, identifier):
+    if getattr(service, 'visitor_id', None) and not guest_allowed(service, identifier):
+        raise ValueError('管理员已关闭此 Mod 的访客访问')
+
+
+def sync_sources(service):
+    """Attach retained originals, never copy a visitor's private translations."""
+    from workshop_app import GAMES
+    root = getattr(service, 'server_root', service)
+    for appid in GAMES:
+        directory = root.data_dir / 'workshop_sources' / appid
+        if not directory.is_dir():
+            continue
+        for source in directory.iterdir():
+            if source.is_dir() and not source.is_symlink() and re.fullmatch(r'[1-9][0-9]{0,19}', source.name):
+                identifier = f'{appid}:{source.name}'
+                if not getattr(service, 'visitor_id', None) or guest_allowed(service, identifier):
+                    attach_cached(service, appid, source.name, source)
+
+
 def cached_source(service, uid):
     from workshop_app import GAMES
     root = getattr(service, 'server_root', service)
@@ -39,14 +78,16 @@ def remember_source(service, appid, uid, source):
 
 
 def attach_cached(service, appid, uid, source):
-    target = service.data_dir / 'uploaded_library/steamapps/workshop/content' / appid / uid
-    if not target.exists():
-        with tempfile.TemporaryDirectory(dir=service.data_dir) as temp:
-            staged = Path(temp) / 'copy'
-            copy_translation_files(source, staged)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            staged.rename(target)
-        service.scan(lambda ids: {})
+    with service.io_lock:
+        target = service.data_dir / 'uploaded_library/steamapps/workshop/content' / appid / uid
+        if not target.exists():
+            with tempfile.TemporaryDirectory(dir=service.data_dir) as temp:
+                staged = Path(temp) / 'copy'
+                copy_translation_files(source, staged)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                staged.rename(target)
+        if f'{appid}:{uid}' not in service.inventory:
+            service.scan(lambda ids: {})
 
 
 def workshop_uid(link):
@@ -66,6 +107,8 @@ def workshop_uid(link):
 def lookup(service, link):
     from workshop_app import GAMES, workshop_details
     uid = workshop_uid(link)
+    for appid in GAMES:
+        require_access(service, f'{appid}:{uid}')
     cached = cached_source(service, uid)
     if cached:
         attach_cached(service, cached[0], uid, cached[1])
@@ -118,6 +161,7 @@ def copy_translation_files(source, destination):
 
 
 def download(service, item):
+    require_access(service, item['id'])
     service.log('等待下载通道…')
     with DOWNLOAD_LOCK:
         cached = cached_source(service, item['uid'])

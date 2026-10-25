@@ -83,7 +83,7 @@ class EntryBrowser:
             page = min(page, pages)
             rows = db.execute(f'''SELECT e.*, r.status AS manual_status,
                                   {effective} AS status, r.updated_at AS reviewed_at ''' + join + where +
-                              ' ORDER BY e.source_file,e.line LIMIT ? OFFSET ?',
+                              ' ORDER BY e.source_file, e.entry_key, e.line LIMIT ? OFFSET ?',
                               arguments + [page_size, (page - 1) * page_size]).fetchall()
             manual = db.execute('SELECT COUNT(*) ' + join + ' AND r.status IS NOT NULL', (identifier,)).fetchone()[0]
         return {'ready': snapshot is not None, 'revision': snapshot[0] if snapshot else None,

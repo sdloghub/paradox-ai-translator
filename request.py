@@ -44,7 +44,7 @@ def findrule(game, language=None):
         context = _RULES_CACHE.get('games', {}).get(game, {})
         common = _RULES_CACHE.get('languages', {}).get(language, {}).get('common', _RULES_CACHE['common'])
         guidance = _RULES_CACHE.get('languages', {}).get(language, {}).get('games', {}).get(game, context.get('guidance', ''))
-        return (common + {'zh-CN':'\n\n当前游戏：', 'zh-TW':'\n\n目前遊戲：', 'ru':'\n\nИгра: '}[language] + context.get('name', game)
+        return (common + {'zh-CN':'\n\n当前游戏：', 'zh-TW':'\n\n目前遊戲：', 'ru':'\n\nИгра: ', 'ko':'\n\n게임: ', 'ja':'\n\nゲーム：'}[language] + context.get('name', game)
                 + '\n' + guidance)
     return _RULES_CACHE[game]
 #print(findrule("st"))
@@ -98,7 +98,7 @@ def restore_tokens(text, tokens):
 def validation_error(original, translated, language=None):
     from localization import current_language
     language = language or current_language()
-    pattern = r'[\u0400-\u052f]' if language == 'ru' else r'[\u3400-\u9fff]'
+    pattern = target_pattern(language)
     if not is_token_only(original) and not re.search(pattern, translated):
         return '未返回目标语言译文，不能将英文回复作为完成缓存'
     before, after = Counter(TOKENS.findall(original)), Counter(TOKENS.findall(output_text(translated)))
@@ -112,6 +112,11 @@ def is_token_only(text):
     """若文本为空白，或剔除全部游戏标识符后不再包含任何英文字母，则视为仅剩标识符/已翻译。"""
     return not isinstance(text, str) or not re.search(r'[A-Za-z]', TOKENS.sub('', text))
 
+
+def target_pattern(language):
+    return {'ru': r'[\u0400-\u052f]', 'ko': r'[\uac00-\ud7af\u1100-\u11ff]',
+            'ja': r'[\u3040-\u30ff\u3400-\u9fff]'}.get(language, r'[\u3400-\u9fff]')
+
 def valid_translation(original, translated, language=None):
     from localization import current_language
     language = language or current_language()
@@ -121,7 +126,7 @@ def valid_translation(original, translated, language=None):
         return translated == original
     return (bool(translated.strip())
             and "---SEPARATOR---" not in translated
-            and (is_token_only(original) or bool(re.search(r'[\u0400-\u052f]' if language == 'ru' else r'[\u3400-\u9fff]', translated)))
+            and (is_token_only(original) or bool(re.search(target_pattern(language), translated)))
             and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(output_text(translated))))
 
 def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40, config=None, progress=None):
