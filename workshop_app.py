@@ -1023,9 +1023,10 @@ class WorkshopService:
                 self.log(f'文件 {index}/{len(sources)}：{name}')
                 relative = Path(item['game']) / name
                 file_issues = []
-                # translator=None 表示只应用缓存
+                # 使用空 translator 函数，只应用缓存不调用 API
+                def no_translate(texts, **_): return [{'success': False, 'text': t} for t in texts]
                 paradox.translate_para(relative, item['game'], staging, 
-                                     project_root=workspace, translator=None, 
+                                     project_root=workspace, translator=no_translate, 
                                      issues=file_issues, duplicate_keys=duplicate_keys, 
                                      shared_translations=shared_translations)
                 issues.extend({**problem, 'file': name, 'original_file': str(Path(item['path']) / name)} 
