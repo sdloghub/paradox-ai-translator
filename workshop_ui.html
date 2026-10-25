@@ -420,13 +420,15 @@ dialog::backdrop{background:var(--backdrop)}
 <dialog id="translate_confirmation" aria-labelledby="translate_confirmation_title">
   <h2 id="translate_confirmation_title">翻译确认</h2>
   <p id="translate_mod_name" style="font-weight:500;margin-bottom:1em"></p>
-  <label style="display:flex;align-items:center;gap:0.5em;margin-bottom:1em">
-    <input type="checkbox" id="translate_use_ai_checkbox" checked>
-    <span>使用 AI 翻译补全</span>
-  </label>
-  <div id="translate_ai_options" style="margin-left:1.5em;margin-bottom:1em">
-    <label for="translate_provider_select" style="display:block;margin-bottom:0.5em">API 服务商</label>
-    <select id="translate_provider_select" style="width:100%;max-width:300px"></select>
+  <div style="display:flex;align-items:center;gap:1em;margin-bottom:1em;flex-wrap:wrap">
+    <label style="display:flex;align-items:center;gap:0.5em;white-space:nowrap">
+      <input type="checkbox" id="translate_use_ai_checkbox" checked>
+      <span>使用 AI 翻译补全</span>
+    </label>
+    <div id="translate_ai_options" style="display:flex;align-items:center;gap:0.5em;flex:1;min-width:200px">
+      <label for="translate_provider_select" style="white-space:nowrap">API 服务商</label>
+      <select id="translate_provider_select" style="flex:1;max-width:300px"></select>
+    </div>
   </div>
   <p id="translate_note" class="sub" style="margin-top:1em"></p>
   <p id="translate_details" class="sub" style="white-space:pre-line;line-height:1.6;margin-top:0.5em"></p>
@@ -539,7 +541,7 @@ $('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!n
 $('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?'自动生成已开启：每个 Mod 单独生成翻译补丁。':'自动生成已关闭，已有翻译 Mod 保留。');}catch(e){$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
 $('open_aggregate').onclick=async()=>{try{await api('open-aggregate',{});}catch(e){toast(e.message);}};
 $('scan').onclick=async()=>{try{await api('scan',{});await refresh();}catch(e){toast(e.message);}};
-$('translate').onclick=async()=>{if(window.startServerTranslation)return window.startServerTranslation();const mod=state.mods.find(m=>m.id===selected);if(!mod)return;const dialog=$('translate_confirmation');const useAICheckbox=$('translate_use_ai_checkbox');const providerSelect=$('translate_provider_select');const aiOptions=$('translate_ai_options');const modName=$('translate_mod_name');const note=$('translate_note');const details=$('translate_details');modName.textContent=`翻译「${mod.title}」`;useAICheckbox.checked=true;providerSelect.innerHTML='';if(state.profiles&&state.profiles.length>0){state.profiles.forEach(p=>{const opt=document.createElement('option');opt.value=p.name;opt.textContent=`${p.name} · ${p.model}${p.has_api_key?'':' · 未保存密钥'}`;providerSelect.appendChild(opt);});}else{const opt=document.createElement('option');opt.value='default';opt.textContent=state.config.provider||state.config.base_url||'当前配置';providerSelect.appendChild(opt);}function updateDialog(){const useAI=useAICheckbox.checked;aiOptions.hidden=!useAI;if(state.demo){note.textContent='演示模式：使用固定示例译文，不访问任何外部接口';details.textContent=`${mod.cache_selection?.enabled===false?'缓存复用已关闭，其余条目重新生成。':'自动整合所选匹配缓存。'}\n完成后备份并回写：${mod.path}`;}else if(useAI){note.textContent='自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目';details.textContent=`英文文本会发往 ${state.config.base_url}，可能产生费用\n完成后备份并回写（报错行保留英文）：${mod.path}`;}else{note.textContent='不勾选时，只导入缓存';details.textContent=`仅导入缓存和本机已有中文\n不调用任何 API，缺失条目保留英文\n完成后备份并回写：${mod.path}`;}}useAICheckbox.onchange=updateDialog;updateDialog();$('cancel_translate_action').onclick=()=>dialog.close();$('confirm_translate_action').onclick=async()=>{const useAI=useAICheckbox.checked;dialog.close();try{await api('translate',{id:selected,use_ai:useAI});await refresh();}catch(e){toast(e.message);}};dialog.oncancel=()=>{};dialog.showModal();};
+$('translate').onclick=async()=>{if(window.startServerTranslation)return window.startServerTranslation();const mod=state.mods.find(m=>m.id===selected);if(!mod)return;const dialog=$('translate_confirmation');const useAICheckbox=$('translate_use_ai_checkbox');const providerSelect=$('translate_provider_select');const aiOptions=$('translate_ai_options');const modName=$('translate_mod_name');const note=$('translate_note');const details=$('translate_details');modName.textContent=`翻译「${mod.title}」`;useAICheckbox.checked=true;providerSelect.innerHTML='';if(state.profiles&&state.profiles.length>0){state.profiles.forEach(p=>{const opt=document.createElement('option');opt.value=p.name;opt.textContent=`${p.name} · ${p.model}${p.has_api_key?'':' · 未保存密钥'}`;providerSelect.appendChild(opt);});}else{const opt=document.createElement('option');opt.value='default';opt.textContent=state.config.provider||state.config.base_url||'当前配置';providerSelect.appendChild(opt);}function updateDialog(){const useAI=useAICheckbox.checked;aiOptions.hidden=!useAI;if(state.demo){note.textContent='演示模式：使用固定示例译文，不访问任何外部接口';details.textContent=`${mod.cache_selection?.enabled===false?'缓存复用已关闭，其余条目重新生成。':'自动整合所选匹配缓存。'}\n完成后备份并回写：${mod.path}`;}else if(useAI){note.textContent='自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目';details.textContent=`英文文本会发往 ${state.config.base_url}，可能产生费用\n完成后备份并回写（报错行保留英文）：${mod.path}`;}else{note.textContent='不勾选时，只导入缓存';details.textContent=`仅导入缓存和本机已有中文\n不调用任何 API，缺失条目保留英文\n完成后备份并回写：${mod.path}`;}}useAICheckbox.onchange=updateDialog;updateDialog();$('cancel_translate_action').onclick=()=>dialog.close();$('confirm_translate_action').onclick=async()=>{const useAI=useAICheckbox.checked;dialog.close();try{if(useAI){await api('translate',{id:selected,use_ai:true});}else{await api('apply_cache_only',{id:selected});}await refresh();}catch(e){toast(e.message);}};dialog.oncancel=()=>{};dialog.showModal();};
 
 $('analyze').onclick=async()=>{try{await api('analyze',{id:selected});await refresh();}catch(e){toast(e.message);}};
 async function changeCache(){if(!selected)return;try{await api('cache-selection',{id:selected,enabled:$('use_cache').checked,version_id:$('cache_version').value?Number($('cache_version').value):null});await refresh();}catch(e){toast(e.message);renderSelection();}}

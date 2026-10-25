@@ -956,6 +956,150 @@ class WorkshopService:
         self.analyze(identifier)
         return build(self, self.get_mod(identifier), title, introduction)
 
+    def apply_cache_only(self, identifier, deploy=True):
+        """只应用缓存和本地已有译文，不调用 AI API"""
+        item = self.get_mod(identifier)
+        self.analyze(identifier)
+        
+        try:
+            import paradox
+            import request
+        except ImportError as error:
+            raise RuntimeError('请先运行启动脚本安装依赖，或安装 requirements.txt') from error
+        
+        label = '仅缓存'
+        sources = self.original_sources(item)
+        if not sources:
+            raise ValueError('该 Mod 没有可识别的英文 localisation/localization YML 文件')
+        
+        workspace = self.data_dir / 'workspaces' / item['appid'] / item['uid']
+        inputs = workspace / 'localisation' / item['game']
+        if inputs.exists():
+            shutil.rmtree(inputs)
+        
+        targets = set()
+        for name, data in sources.items():
+            target = target_path(name, item['game']).casefold()
+            if target in targets:
+                raise ValueError(f'输出文件名冲突：{name}')
+            targets.add(target)
+            atomic_bytes(inputs / name, data)
+        
+        from translation_cache import entries, aligned_texts, digest, duplicate_issues
+        duplicate_keys = {issue["key"] for issue in duplicate_issues(entries(sources, item["game"], strict=False))}
+        
+        # 导入本地已有译文和缓存
+        local_rows = {}
+        for name in sources:
+            target = Path(item['path']) / target_path(name, item['game'])
+            if target.is_file():
+                local_rows[name] = aligned_texts(
+                    entries({name:sources[name]}, item['game'], strict=False),
+                    entries({name:target.read_bytes()}, item['game'], strict=False)
+                )
+        
+        allowed = {(f,k,h):text for f,k,h,text,origin in self.cache.active_rows(item, local_rows)}
+        
+        # 准备已有缓存文件
+        for name, data in sources.items():
+            payload = {}
+            for e in entries({name:data}, item['game'], strict=False):
+                text = allowed.get((name,e['key'],digest(e['text'])))
+                if text is not None:
+                    paradox.store_cached_entry(payload, e['key'], e['text'], text)
+            atomic_bytes(workspace / 'already' / item['game'] / (name + '.cache.json'), 
+                        json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+        
+        self.log(f"已复制 {len(sources)} 个英文文件到工作目录；仅应用缓存，不调用 API")
+        
+        # 使用 None translator 处理文件，paradox.translate_para 会只应用缓存
+        issues = []
+        translated = {}
+        shared_translations = {}
+        
+        with tempfile.TemporaryDirectory(prefix='output-', dir=workspace) as staging_dir:
+            staging = Path(staging_dir)
+            for index, name in enumerate(sources, 1):
+                self.log(f'文件 {index}/{len(sources)}：{name}')
+                relative = Path(item['game']) / name
+                file_issues = []
+                # translator=None 表示只应用缓存
+                paradox.translate_para(relative, item['game'], staging, 
+                                     project_root=workspace, translator=None, 
+                                     issues=file_issues, duplicate_keys=duplicate_keys, 
+                                     shared_translations=shared_translations)
+                issues.extend({**problem, 'file': name, 'original_file': str(Path(item['path']) / name)} 
+                            for problem in file_issues)
+                output = staging / paradox.output_name(relative, item['game'])
+                data = output.read_bytes()
+                if not data.startswith(b'\xef\xbb\xbf'):
+                    data = b'\xef\xbb\xbf' + data
+                translated[target_path(name, item['game'])] = data
+            
+            choice = self.cache.selection(identifier)
+            self.cache.select(identifier, choice['enabled'])
+            self.cache.sync_workspace(item, sources, origin='仅缓存')
+            item['cache_selection'] = self.cache.selection(identifier)
+            item['counts'] = self.cache.stats(item, sources)
+            item['scan_state'] = '已扫描'
+            self.persist_item(item)
+            self.save_completed()
+            
+            atomic_bytes(workspace / 'translation-report.json', 
+                        json.dumps({'error_lines': len(issues), 'issues': issues}, 
+                                 ensure_ascii=False, indent=2).encode('utf-8'))
+            
+            source_digest = hashlib.sha256(
+                b''.join(name.encode() + b'\0' + hashlib.sha256(data).digest() 
+                        for name, data in sorted(sources.items()))
+            ).hexdigest()
+            
+            with self.connect() as db:
+                cursor = db.execute(
+                    'INSERT INTO versions(id,mod_id,created_at,title,source_hash,status,originals,chinese,provider,origins) '
+                    'VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM versions UNION ALL SELECT version_id AS id FROM deleted_cache_versions)),?,?,?,?,?,?,?,?,?)',
+                    (identifier, now(), item['title'], source_digest, '已备份', 
+                     archive(sources), archive(translated), label, 
+                     json.dumps(item['counts']['origins'], ensure_ascii=False))
+                )
+                version = cursor.lastrowid
+        
+        self.log(f'中文文件与英文原文已备份到 SQLite，版本 {version}')
+        
+        aggregate = {'enabled':False, 'pending_deployment':True}
+        if deploy:
+            aggregate = self.restore(version, identifier)['aggregate']
+        
+        if issues:
+            with self.connect() as db:
+                db.execute('UPDATE versions SET status=? WHERE id=?', 
+                          (f'{"已回写" if deploy else "已备份"}（{len(issues)} 行保留英文）', version))
+        
+        item['cache_selection'] = self.cache.selection(identifier)
+        item['translated'] = True
+        self.persist_item(item)
+        self.save_completed()
+        
+        self.log('仅缓存模式完成 · 未匹配条目保留英文')
+        for problem in issues:
+            self.log(f"原文件：{problem['original_file']}，第 {problem['line']} 行\n"
+                    f"原因：{problem['reason']}\n原文：{problem['original_line']}")
+        
+        self.log(f'任务结束：报错 {len(issues)} 行，已将对应英文原行保留在翻译文件中；'
+                f'完整明细：{workspace / "translation-report.json"}')
+        
+        return {
+            'version_id': version, 
+            'files': len(translated), 
+            'path': item['path'], 
+            'workspace': str(workspace), 
+            'provider': label, 
+            'error_lines': len(issues), 
+            'issues': issues, 
+            'aggregate': aggregate
+        }
+
+
     def translate(self, identifier, translator=None, deploy=True, provider=None, use_ai=True):
         item = self.get_mod(identifier)
         self.analyze(identifier)
@@ -1778,6 +1922,11 @@ class Handler(BaseHTTPRequestHandler):
                     from server_sessions import transient_config
                     config = transient_config(service, body.get('api', {}))
                 service.start('translate', lambda: service.translate(identifier, use_ai=use_ai), identifier, config_override=config)
+            elif self.path == '/api/apply_cache_only':
+                identifier = body['id']
+                service.get_mod(identifier)
+                deploy = body.get('deploy', True)
+                service.start('apply_cache_only', lambda: service.apply_cache_only(identifier, deploy=deploy), identifier)
             elif self.path == '/api/restore':
                 identifier, version = body['id'], int(body['version_id'])
                 service.get_mod(identifier)
