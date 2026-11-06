@@ -50,7 +50,8 @@ class GuestPrivacyTests(unittest.TestCase):
 
     def translate(self, guest, key='must-not-persist-api-key'):
         lookup(guest, 'https://steamcommunity.com/sharedfiles/filedetails/?id=123')
-        config = {**guest.config(), 'api_key': key, 'provider': 'test-model', 'model': 'test-model'}
+        config = {**guest.config(), 'api_key': key, 'provider': 'test-model', 'model': 'test-model',
+                  'developer_mode': False, 'aggregate_export': False}
         guest.start('translate', lambda: guest.translate('281990:123', translator=app.WorkshopService.demo_translate),
                     '281990:123', config_override=config)
         for _ in range(100):
