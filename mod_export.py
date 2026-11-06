@@ -10,7 +10,7 @@ import time
 
 
 def safe_id(item):
-    if not all(re.fullmatch(r'[0-9]+', str(item[key])) for key in ('appid', 'uid')):
+    if not all(re.fullmatch(r'[0-9a-zA-Z_-]+', str(item[key])) for key in ('appid', 'uid')):
         raise ValueError('游戏或 Mod UID 无效')
     from localization import current_language
     suffix = '' if current_language() == 'zh-CN' else '_' + current_language().replace('-', '_')
@@ -57,6 +57,8 @@ def read_manifest(service, item):
 
 def published_workshop_id(service, item):
     """Reuse only a previously published patch's ID; never allocate one."""
+    if item.get('is_local'):
+        return None
     if not read_manifest(service, item):
         return None
     root = output_root(service, item)

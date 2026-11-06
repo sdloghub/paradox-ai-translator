@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workshop · Mod 翻译</title><link rel="icon" href="/favicon.ico">
+<html lang="zh-CN" data-theme="light"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title data-i18n="app.title">Workshop · Mod 翻译</title><link rel="icon" href="/favicon.ico">
 <style>
 :root,[data-theme="light"]{
   color-scheme:light;
@@ -316,187 +316,287 @@ dialog::backdrop{background:var(--backdrop)}
 .glossary-table-wrap{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:10px}
 .glossary-table input[type="text"]{padding:6px 8px;font-size:12px}
 .language-control{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);max-width:100%}.language-control select{width:auto;min-width:130px;margin:0}.header-controls #language_hint{max-width:340px;text-align:right;font-size:11px}@media(max-width:640px){.language-control{flex-wrap:wrap}.header-controls #language_hint{text-align:left}}
+.language-add-bar{position:relative;margin-top:4px;display:flex;justify-content:flex-end}
+.lang-add-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:4px;border:1px dashed var(--line-strong);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.lang-add-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--selected-bg)}
+.lang-add-menu{position:absolute;top:100%;right:0;margin-top:6px;width:280px;background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:900;overflow:hidden;padding:4px}
+.lang-menu-item{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:6px;text-decoration:none;color:var(--ink);border:none;background:none;width:100%;text-align:left;cursor:pointer;font-size:12px;box-sizing:border-box;transition:background .15s}
+.lang-menu-item:hover{background:var(--surface-subtle)}
+.lang-menu-title{font-weight:600;line-height:1.3;color:var(--ink)}
+.lang-menu-desc{font-size:10px;color:var(--muted);margin-top:2px}
+.github-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--ink);background:var(--surface-subtle);border:1px solid var(--line-strong);border-radius:999px;text-decoration:none;transition:all .15s}
+.github-badge:hover{background:var(--selected-bg);border-color:var(--accent);color:var(--accent)}
+.custom-lang-dialog{border:1px solid var(--line-strong);border-radius:12px;padding:0;background:var(--surface);color:var(--ink);max-width:480px;width:90%;box-shadow:0 12px 36px rgba(0,0,0,.25)}
+.custom-lang-dialog::backdrop{background:rgba(0,0,0,.45);backdrop-filter:blur(2px)}
+.dialog-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+.dialog-header h3{margin:0;font-size:16px}
+.dialog-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:0}
+.dialog-body{padding:20px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--line);background:var(--surface-subtle)}
+.app-footer{margin-top:36px;padding:20px 0;text-align:center;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+.footer-links{display:flex;align-items:center;justify-content:center;gap:10px}
+.footer-github{color:var(--muted);display:inline-flex;align-items:center;gap:5px;text-decoration:none;transition:color .15s}
+.footer-github:hover{color:var(--accent)}
 </style>
 <header>
   <div>
     <div class="eyebrow" style="display:flex;align-items:center;gap:10px"><img src="/assets/app-icon.svg" width="36" height="36" alt="Paradox AI Translator 图标"><span>Paradox AI Translator</span><span class="eyebrow-slogan">Your world, Your word!</span></div>
     <h1>Paradox AI Translator</h1>
-    <div class="sub">面向五款 Paradox 游戏的创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。</div>
-    <div class="sub" style="margin-top:4px"><a href="https://github.com/sdloghub/paradox-ai-translator" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:500">GitHub: sdloghub/paradox-ai-translator</a></div>
+    <div class="sub" data-i18n="header.sub">面向五款 Paradox 游戏的创意工坊汉化工作台：保留变量、颜色与格式标记，只在英文哈希仍然匹配时复用旧译文。</div>
   </div>
   <div class="header-controls">
-    <label class="language-control" for="workshop_language"><span>界面与翻译语言</span>
+    <label class="language-control" for="workshop_language"><span data-i18n="header.lang_label">界面与翻译语言</span>
       <select id="workshop_language" data-i18n-skip>
-        <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ru">Русский</option><option value="ko">한국어</option><option value="ja">日本語</option>
+        <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ru">Русский</option><option value="ko">한국어</option><option value="ja">日本語</option>
       </select>
     </label><div id="language_hint" class="sub" role="status"></div>
+    <div class="language-add-bar">
+      <button type="button" class="lang-add-btn" id="lang_add_btn" aria-expanded="false" aria-haspopup="true">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 01.75.75v4.5h4.5a.75.75 0 010 1.5h-4.5v4.5a.75.75 0 01-1.5 0v-4.5h-4.5a.75.75 0 010-1.5h4.5v-4.5A.75.75 0 018 2z"/></svg>
+        <span data-i18n="header.add_lang">Add Language</span>
+      </button>
+      <div class="lang-add-menu" id="lang_add_menu" hidden>
+        <a href="https://github.com/sdloghub/paradox-ai-translator/issues/new?title=%5BLanguage+Request%5D+Add+Support+for+...&body=%23%23+Language+Request%0A%0APlease+add+support+for+the+following+language%3A%0A-%20Language+Name%3A%20%0A-%20Language+Code%3A%20" target="_blank" rel="noopener noreferrer" class="lang-menu-item" id="opt_github_issue">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;margin-top:2px"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <div>
+            <div class="lang-menu-title" data-i18n="header.issue_title">在 GitHub 提交 Issue</div>
+            <div class="lang-menu-desc" data-i18n="header.issue_desc">向作者申请官方加入该语言</div>
+          </div>
+        </a>
+        <button type="button" class="lang-menu-item" id="opt_custom_token">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0;margin-top:2px"><path d="M6.5 1A1.5 1.5 0 005 2.5V3H2.5A1.5 1.5 0 001 4.5v9A1.5 1.5 0 002.5 15h11a1.5 1.5 0 001.5-1.5v-9A1.5 1.5 0 0013.5 3H11v-.5A1.5 1.5 0 009.5 1h-3zm1 1.5h2a.5.5 0 01.5.5V3H6v-.5a.5.5 0 01.5-.5zM8 6a2 2 0 100 4 2 2 0 000-4z"/></svg>
+          <div>
+            <div class="lang-menu-title" data-i18n="header.custom_title">用自己的 API Token 制作汉化 / 翻译</div>
+            <div class="lang-menu-desc" data-i18n="header.custom_desc">一键由 AI 翻译全部界面文字并自动加载</div>
+          </div>
+        </button>
+      </div>
+    </div>
     <div class="theme-switcher" id="theme_switcher" role="group" aria-label="界面主题配色">
-      <button type="button" class="theme-btn" data-theme-opt="light" aria-pressed="true"><span class="theme-dot" style="background:#4f46e5"></span>极简日间</button>
-      <button type="button" class="theme-btn" data-theme-opt="dark" aria-pressed="false"><span class="theme-dot" style="background:#818cf8"></span>极简夜间</button>
-      <button type="button" class="theme-btn" data-theme-opt="hc-light" aria-pressed="false"><span class="theme-dot" style="background:#047857"></span>高对比日间</button>
-      <button type="button" class="theme-btn" data-theme-opt="hc-dark" aria-pressed="false"><span class="theme-dot" style="background:#22d3ee"></span>高对比夜间</button>
+      <button type="button" class="theme-btn" data-theme-opt="light" aria-pressed="true"><span class="theme-dot" style="background:#4f46e5"></span><span data-i18n="header.theme_light">极简日间</span></button>
+      <button type="button" class="theme-btn" data-theme-opt="dark" aria-pressed="false"><span class="theme-dot" style="background:#818cf8"></span><span data-i18n="header.theme_dark">极简夜间</span></button>
+      <button type="button" class="theme-btn" data-theme-opt="hc-light" aria-pressed="false"><span class="theme-dot" style="background:#047857"></span><span data-i18n="header.theme_hc_light">高对比日间</span></button>
+      <button type="button" class="theme-btn" data-theme-opt="hc-dark" aria-pressed="false"><span class="theme-dot" style="background:#22d3ee"></span><span data-i18n="header.theme_hc_dark">高对比夜间</span></button>
     </div>
     <div class="row">
-      <span class="badge purple" id="mode">Windows / macOS 本地版</span>
-      <button id="open_tutorial" class="primary">新手教程</button>
+      <span class="badge purple" id="mode" data-i18n="header.local_mode">Windows / macOS 本地版</span>
+      <button id="open_tutorial" class="primary" data-i18n="header.tutorial_btn">新手教程</button>
+      <a href="https://github.com/sdloghub/paradox-ai-translator" target="_blank" rel="noopener noreferrer" class="github-badge" title="GitHub: sdloghub/paradox-ai-translator">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
     </div>
   </div>
 </header>
 <main><div id="toast" role="alert"></div>
 <aside id="beginner_tutorial" class="tutorial-sidebar" hidden aria-label="本地版新手教程侧边栏"></aside>
-<section id="developer_exports" class="card aggregate-panel" aria-labelledby="aggregate_title" hidden><div class="row"><div class="grow"><h2 id="aggregate_title">开发者 · 自动生成翻译 Mod</h2><label class="aggregate-switch" for="aggregate_export"><input id="aggregate_export" type="checkbox" checked>回写后自动生成每个原 Mod 的独立翻译补丁</label></div><button id="open_aggregate">打开翻译 Mod 目录</button></div><div class="sub">仅开发者模式可见。按游戏与原 Mod UID 分开保存，不再合并不同 Mod。旧成果更新前备份；简介优先复用，首次使用默认 API 生成（无 API 时使用模板）。</div><div id="aggregate_location" class="path"></div></section>
-<div class="grid"><section class="card"><div class="row"><h2 class="grow">本机创意工坊</h2><button id="scan" class="primary">刷新目录</button></div><div class="sub library-note">优先读取 Steam ACF 已安装清单。自动按「已扫描未完全翻译 → 已扫描完全翻译 → 未扫描」排序。</div><input id="search" placeholder="在当前游戏中搜索名称或 UID" aria-label="搜索 Mod"><div id="categories" class="categories" role="tablist" aria-label="按游戏分类"></div><div class="mods" id="mods"><div class="empty">先配置 Steam 库目录，然后点击「扫描 Mod」。<br>默认自动检测本机 Steam 库。</div></div><div class="status count-bar" id="count"></div></section>
-<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前按缓存选项整合已有中文和所选匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="cache-options"><label><input id="use_cache" type="checkbox" checked>导入缓存（自动复用）</label><div id="cache_details"><select id="cache_version" aria-label="选择缓存版本"><option value="">最新缓存（默认）</option></select><div id="cache_note" class="sub">默认使用最新缓存；可关闭或选择历史备份。仅复用英文哈希匹配的条目。导入缓存无法检查 Steam 尚未安装的更新。</div></div><label style="margin-top:12px"><input id="use_ai" type="checkbox" checked>AI 补全缺失译文</label><div id="ai_note" class="sub">关闭后仅导入缓存和本机已有中文，不调用任何 API。缺失条目保留英文。</div><div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"><label for="workflow_mode" style="font-weight:600;margin-bottom:6px">翻译工作流模式（可选术语表）</label><select id="workflow_mode" aria-label="选择翻译工作流模式"><option value="fast">1. 快速模式（无术语表 · 节省 Token 消耗）</option><option value="glossary">2. 术语表模式（翻译前扫描英文词云 · 统一高频译名）</option></select><div id="glossary_options" hidden style="margin-top:8px"><label for="glossary_extract_mode">术语扫描与提取范围</label><select id="glossary_extract_mode" aria-label="选择术语提取方式"><option value="short_keys">1. 只扫短键值（优先 &lt;5 个单词的独立键值，多次出现即成为术语）</option><option value="long_extract">2. 在长键值中提取（短键值 + 扫描长文本中重复出现的词汇/专名）</option><option value="ai_extract">3. AI 智能提取（备注：由 AI 深度扫描提取术语，可能会花较多 Token）</option></select><label for="glossary_approval_mode" style="margin-top:8px">术语表审批方式</label><select id="glossary_approval_mode" aria-label="选择术语审批方式"><option value="manual">先在界面展示词云 / 术语列表供勾选或修改后，再正式翻译</option><option value="ai_approve">AI 自动审批（由 AI 自动筛选并统一生成术语译名，直接用于翻译）</option></select><div id="glossary_token_warning" class="sub" style="color:var(--warn-fg);margin-top:4px" hidden>备注：已选 AI 术语提取或 AI 自动审批，执行时会额外消耗较多 API Token。</div><div class="row" style="margin-top:8px"><button type="button" id="open_glossary_btn" class="scan-action" style="padding:7px 12px">词云扫描 / 编辑术语表</button><span id="glossary_summary_badge" class="sub">尚未提取术语</span></div></div><div id="memory_limit_note" class="sub" style="margin-top:6px">本地版扫描与词云无内存上限；网页版启用服务器内存保护上限（同时内置浏览器端 JS/TS 引擎）。</div></div></div><div class="action-groups">
-<div class="action-group"><div class="action-caption">翻译处理</div><div class="action-row action-row-three" role="group" aria-label="扫描与翻译"><button id="analyze" class="scan-action">扫描此 Mod</button><button id="import_btn">导入译文</button><button id="translate" class="ai-action">翻译</button></div></div>
-<div class="action-group"><div class="action-caption">本地文件</div><div class="action-row" role="group" aria-label="查看本地文件"><button id="open">打开 Mod 文件夹</button><button id="browse_entries">查看 / 修改文件条目</button></div></div>
-<div class="action-group"><div class="action-caption">生成与导出</div><div class="action-row" role="group" aria-label="生成与导出"><button id="generate_mod" class="primary">生成翻译 Mod</button><button id="export_btn">导出中文 + 哈希 (.zip)</button></div></div>
-<div class="action-group action-group-danger"><div class="action-caption">清理本机翻译</div><div class="action-row action-row-single" role="group" aria-label="清除翻译"><button id="clear_translations" class="danger-action">清除翻译文件</button></div></div>
-</div><div class="sub" style="margin-top:12px">解析或翻译失败的行保留英文，其余条目继续翻译；任务结束显示报错行数与位置。Steam 更新可能覆盖回写文件，可从备份再次复制。</div></div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><details id="settings"><summary>API 与 Steam 库设置</summary><label for="storage_mode">配置保存位置</label><div class="row"><select id="storage_mode" class="grow" style="width:auto"><option value="user">用户文件夹</option><option value="portable">程序所在文件夹</option></select><button id="switch_storage">切换保存位置</button></div><div id="config_location" class="path" style="margin-top:10px"></div><div class="sub">切换时复制当前配置和已保存的接口；同名但内容不同的旧接口会保留为另一份配置。翻译缓存和备份继续保存在数据目录。</div><label for="profile_select">已保存的 API 配置</label><div class="row"><select id="profile_select" class="grow" style="width:auto" aria-label="已保存的 API 配置"><option value="">选择已保存的配置</option></select><button id="switch_profile">使用此配置</button></div><label for="config_name">配置名称（保存同名时更新，可保存多个模型）</label><input id="config_name" placeholder="例如：日常翻译、备用接口"><label>提供商名称（可留空自动命名）</label><input id="provider" placeholder="填写你的 API 提供商名称"><label>接口格式</label><input value="OpenAI 兼容 · Chat Completions" disabled><div class="field-grid"><div><label>Base URL</label><input id="base_url" placeholder="https://api.openai.com/v1"></div><div><label>模型名称</label><input id="model" placeholder="gpt-4.1-mini"></div></div><label>API Key（留空保留已保存的密钥）</label><input id="api_key" type="password" autocomplete="new-password" placeholder="尚未设置"><div class="field-grid"><div><label>每批文本数</label><input id="batch_size" type="number" min="1" max="50"></div><div><label>并发请求数</label><input id="concurrency" type="number" min="1" max="10"></div></div><label>额外 Steam 库目录（每行一个，可填 workshop/content）</label><textarea id="libraries" rows="2" placeholder="/Volumes/Games/SteamLibrary"></textarea><div class="row" style="margin-top:12px"><button id="save">保存配置</button><span class="sub">API Key 保存到本机 JSON，不返回浏览器。</span></div></details></section></div>
+<section id="developer_exports" class="card aggregate-panel" aria-labelledby="aggregate_title" hidden><div class="row"><div class="grow"><h2 id="aggregate_title" data-i18n="aggregate.title">开发者 · 自动生成翻译 Mod</h2><label class="aggregate-switch" for="aggregate_export"><input id="aggregate_export" type="checkbox" checked><span data-i18n="aggregate.export_checkbox">回写后自动生成每个原 Mod 的独立翻译补丁</span></label></div><button id="open_aggregate" data-i18n="aggregate.open_btn">打开翻译 Mod 目录</button></div><div class="sub" data-i18n="aggregate.desc">仅开发者模式可见。按游戏与原 Mod UID 分开保存，不再合并不同 Mod。旧成果更新前备份；简介优先复用，首次使用默认 API 生成（无 API 时使用模板）。</div><div id="aggregate_location" class="path"></div></section>
+<div class="grid"><section class="card"><div class="row"><h2 class="grow" data-i18n="nav.workshop">本机创意工坊</h2><button id="scan" class="primary" data-i18n="nav.refresh">刷新目录</button></div><div class="sub library-note" data-i18n="library.note">优先读取 Steam ACF 已安装清单。自动按「已扫描未完全翻译 → 已扫描完全翻译 → 未扫描」排序。</div><input id="search" placeholder="在当前游戏中搜索名称或 UID" aria-label="搜索 Mod"><div id="categories" class="categories" role="tablist" aria-label="按游戏分类"></div><div class="mods" id="mods"><div class="empty" data-i18n="mods.empty_initial">先配置 Steam 库目录，然后点击「扫描 Mod」。<br>默认自动检测本机 Steam 库。</div></div><div class="status count-bar" id="count"></div></section>
+<section class="card"><h2 data-i18n="workbench.title">翻译工作台</h2><div id="selection" class="empty" data-i18n="mods.selection_empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice" data-i18n="workbench.notice">开始前按缓存选项整合已有中文和所选匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="cache-options"><label><input id="use_cache" type="checkbox" checked><span data-i18n="workbench.use_cache">导入缓存（自动复用）</span></label><div id="cache_details"><select id="cache_version" aria-label="选择缓存版本"><option value="" data-i18n="cache.latest_default">最新缓存（默认）</option></select><div id="cache_note" class="sub" data-i18n="workbench.cache_note">默认使用最新缓存；可关闭或选择历史备份。仅复用英文哈希匹配的条目。导入缓存无法检查 Steam 尚未安装的更新。</div></div><label style="margin-top:12px"><input id="use_ai" type="checkbox" checked><span data-i18n="workbench.use_ai">AI 补全缺失译文</span></label><div id="ai_note" class="sub" data-i18n="workbench.ai_note">关闭后仅导入缓存和本机已有中文，不调用任何 API。缺失条目保留英文。</div><div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"><label for="workflow_mode" style="font-weight:600;margin-bottom:6px" data-i18n="workflow.mode">翻译工作流模式（可选术语表）</label><select id="workflow_mode" aria-label="选择翻译工作流模式"><option value="fast" data-i18n="workflow.fast">1. 快速模式（无术语表 · 节省 Token 消耗）</option><option value="glossary" data-i18n="workflow.glossary">2. 术语表模式（翻译前扫描英文词云 · 统一高频译名）</option></select><div id="glossary_options" hidden style="margin-top:8px"><label for="glossary_extract_mode" data-i18n="glossary.extract_mode">术语扫描与提取范围</label><select id="glossary_extract_mode" aria-label="选择术语提取方式"><option value="short_keys" data-i18n="glossary.short_keys">1. 只扫短键值（优先 &lt;5 个单词的独立键值，多次出现即成为术语）</option><option value="long_extract" data-i18n="glossary.long_extract">2. 在长键值中提取（短键值 + 扫描长文本中重复出现的词汇/专名）</option><option value="ai_extract" data-i18n="glossary.ai_extract">3. AI 智能提取（备注：由 AI 深度扫描提取术语，可能会花较多 Token）</option></select><label for="glossary_approval_mode" style="margin-top:8px" data-i18n="glossary.approval_mode">术语表审批方式</label><select id="glossary_approval_mode" aria-label="选择术语审批方式"><option value="manual" data-i18n="glossary.manual">先在界面展示词云 / 术语列表供勾选或修改后，再正式翻译</option><option value="ai_approve" data-i18n="glossary.ai_approve">AI 自动审批（由 AI 自动筛选并统一生成术语译名，直接用于翻译）</option></select><div id="glossary_token_warning" class="sub" style="color:var(--warn-fg);margin-top:4px" hidden data-i18n="workbench.glossary_warning">备注：已选 AI 术语提取或 AI 自动审批，执行时会额外消耗较多 API Token。</div><div class="row" style="margin-top:8px"><button type="button" id="open_glossary_btn" class="scan-action" style="padding:7px 12px" data-i18n="btn.open_glossary">词云扫描 / 编辑术语表</button><span id="glossary_summary_badge" class="sub" data-i18n="glossary.summary_none">尚未提取术语</span></div></div><div id="memory_limit_note" class="sub" style="margin-top:6px" data-i18n="workbench.memory_limit_note">本地版扫描与词云无内存上限；网页版启用服务器内存保护上限（同时内置浏览器端 JS/TS 引擎）。</div></div></div><div class="action-groups">
+<div class="action-group"><div class="action-caption" data-i18n="caption.translation">翻译处理</div><div class="action-row action-row-three" role="group" aria-label="扫描与翻译"><button id="analyze" class="scan-action" data-i18n="btn.scan_mod">扫描此 Mod</button><button id="import_btn" data-i18n="btn.import_translation">导入译文</button><button id="translate" class="ai-action" data-i18n="btn.translate">翻译</button></div></div>
+<div class="action-group"><div class="action-caption" data-i18n="caption.local_files">本地文件</div><div class="action-row" role="group" aria-label="查看本地文件"><button id="open" data-i18n="btn.open_folder">打开 Mod 文件夹</button><button id="browse_entries" data-i18n="entry.browse_btn">查看 / 修改文件条目</button></div></div>
+<div class="action-group"><div class="action-caption" data-i18n="caption.generate_export">生成与导出</div><div class="action-row" role="group" aria-label="生成与导出"><button id="generate_mod" class="primary" data-i18n="btn.generate_mod">生成翻译 Mod</button><button id="export_btn" data-i18n="btn.export_zip">导出中文 + 哈希 (.zip)</button></div></div>
+<div class="action-group action-group-danger"><div class="action-caption" data-i18n="workbench.cleanup_title">清理本机翻译</div><div class="action-row action-row-single" role="group" aria-label="清除翻译"><button id="clear_translations" class="danger-action" data-i18n="btn.clear_translations">清除翻译文件</button></div></div>
+</div><div class="sub" style="margin-top:12px" data-i18n="workbench.fail_detail">解析或翻译失败的行保留英文，其余条目继续翻译；任务结束显示报错行数与位置。Steam 更新可能覆盖回写文件，可从备份再次复制。</div></div><hr style="border:0;border-top:1px solid var(--line);margin:22px 0"><details id="settings"><summary data-i18n="settings.title">API 与 Steam 库设置</summary><label for="storage_mode" data-i18n="settings.storage_location">配置保存位置</label><div class="row"><select id="storage_mode" class="grow" style="width:auto"><option value="user" data-i18n="settings.user_dir">用户文件夹</option><option value="portable" data-i18n="settings.portable_dir">程序所在文件夹</option></select><button id="switch_storage" data-i18n="btn.switch_storage">切换保存位置</button></div><div id="config_location" class="path" style="margin-top:10px"></div><div class="sub" data-i18n="settings.storage_hint">切换时复制当前配置和已保存的接口；同名但内容不同的旧接口会保留为另一份配置。翻译缓存和备份继续保存在数据目录。</div><label for="profile_select" data-i18n="settings.saved_profiles">已保存的 API 配置</label><div class="row"><select id="profile_select" class="grow" style="width:auto" aria-label="已保存的 API 配置"><option value="" data-i18n="settings.select_profile">选择已保存的配置</option></select><button id="switch_profile" data-i18n="btn.switch_profile">使用此配置</button></div><label for="config_name" data-i18n="settings.profile_name_label">配置名称（保存同名时更新，可保存多个模型）</label><input id="config_name" data-i18n-ph="settings.profile_name_ph" placeholder="例如：日常翻译、备用接口"><label data-i18n="settings.provider_label">提供商名称（可留空自动命名）</label><input id="provider" data-i18n-ph="settings.provider_ph" placeholder="填写你的 API 提供商名称"><label data-i18n="settings.api_format">接口格式</label><input value="OpenAI 兼容 · Chat Completions" data-i18n-val="settings.api_format_value" disabled><div class="field-grid"><div><label>Base URL</label><input id="base_url" placeholder="https://api.openai.com/v1"></div><div><label data-i18n="settings.model_name">模型名称</label><input id="model" placeholder="gpt-4.1-mini"></div></div><label data-i18n="settings.api_key_label">API Key（留空保留已保存的密钥）</label><input id="api_key" type="password" autocomplete="new-password" placeholder="尚未设置"><div class="field-grid"><div><label data-i18n="settings.batch_size">每批文本数</label><input id="batch_size" type="number" min="1" max="50"></div><div><label data-i18n="settings.concurrency">并发请求数</label><input id="concurrency" type="number" min="1" max="10"></div></div><label data-i18n="settings.extra_libraries_label">额外 Steam 库目录（每行一个，可填 workshop/content）</label><textarea id="libraries" rows="2" placeholder="/Volumes/Games/SteamLibrary"></textarea><div class="row" style="margin-top:12px"><button id="save" data-i18n="btn.save_config">保存配置</button><span class="sub" data-i18n="settings.api_key_hint">API Key 保存到本机 JSON，不返回浏览器。</span></div></details></section></div>
 
 <details class="card wide collapsible-panel entry-browser" id="entry_browser" aria-labelledby="entry_title">
   <summary class="panel-summary">
     <div class="panel-summary-main">
-      <h2 id="entry_title" tabindex="-1">条目浏览库（查看 / 修改文件）</h2>
-      <span class="sub">默认收起 · 点击展开查看键值、排查报错或直接修改原文件行</span>
+      <h2 id="entry_title" tabindex="-1" data-i18n="entry.title">条目浏览库（查看 / 修改文件）</h2>
+      <span class="sub" data-i18n="entry.subtitle">默认收起 · 点击展开查看键值、排查报错或直接修改原文件行</span>
     </div>
     <span class="status" id="entry_loading" role="status"></span>
   </summary>
   <div class="panel-body">
-    <div class="row" style="justify-content:flex-end"><button id="entry_scan" class="scan-action">扫描并更新条目</button><button id="entry_close">收起并回到工作台</button></div>
-    <div class="entry-toolbar"><input id="entry_query" maxlength="256" placeholder="搜索键名、英文、中文或文件路径" aria-label="搜索翻译条目"><button id="entry_refresh">刷新列表</button></div>
-    <div class="entry-filters" id="entry_filters" role="group" aria-label="按条目状态筛选"></div><div id="entry_note" class="sub"></div><div id="entry_edit_result" class="notice entry-edit-result" hidden aria-live="polite"></div>
-    <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th scope="col">键名 / 原文件位置</th><th scope="col">英文 / 错误原行</th><th scope="col">中文 / 来源</th><th scope="col">状态</th></tr></thead><tbody id="entry_rows"></tbody></table></div>
-    <div id="entry_empty" class="empty">先在上方选择游戏和 Mod，查看键名、英文、中文与状态。</div><div class="row entry-pagination"><span id="entry_page" class="sub grow"></span><button id="entry_prev">上一页</button><button id="entry_next">下一页</button></div>
+    <div class="row" style="justify-content:flex-end"><button id="entry_scan" class="scan-action" data-i18n="entry.scan_btn">扫描并更新条目</button><button id="entry_close" data-i18n="entry.close_btn">收起并回到工作台</button></div>
+    <div class="entry-toolbar"><input id="entry_query" maxlength="256" placeholder="搜索键名、英文、中文或文件路径" aria-label="搜索翻译条目" data-i18n-ph="entry.query_placeholder" data-i18n-title="entry.query_aria"><button id="entry_refresh" data-i18n="entry.refresh_btn">刷新列表</button></div>
+    <div class="entry-filters" id="entry_filters" role="group" aria-label="按条目状态筛选" data-i18n-title="entry.filter_group_aria"></div><div id="entry_note" class="sub"></div><div id="entry_edit_result" class="notice entry-edit-result" hidden aria-live="polite"></div>
+    <div class="entry-table-wrap"><table class="entry-table"><thead><tr><th scope="col" data-i18n="entry.th_key">键名 / 原文件位置</th><th scope="col" data-i18n="entry.th_en">英文 / 错误原行</th><th scope="col" data-i18n="entry.th_zh">中文 / 来源</th><th scope="col" data-i18n="entry.th_status">状态</th></tr></thead><tbody id="entry_rows"></tbody></table></div>
+    <div id="entry_empty" class="empty" data-i18n="entry.empty">先在上方选择游戏和 Mod，查看键名、英文、中文与状态。</div><div class="row entry-pagination"><span id="entry_page" class="sub grow"></span><button id="entry_prev" data-i18n="entry.prev_page">上一页</button><button id="entry_next" data-i18n="entry.next_page">下一页</button></div>
   </div>
 </details>
 
 <section class="wide" id="history_panel" hidden aria-label="当前 Mod 翻译版本">
   <div id="history" class="history-groups"></div>
-  <div id="nohistory" class="empty">该 Mod 暂无历史版本。</div>
+  <div id="nohistory" class="empty" data-i18n="mods.nohistory_empty">该 Mod 暂无历史版本。</div>
 </section>
 
-<section class="card wide"><div class="row"><h2 class="grow">任务进度</h2><span id="status" class="status">待命</span></div><div id="task_list" class="task-list" aria-label="各 Mod 任务"></div><div id="logs" class="logs">准备就绪。先保存接口设置，再扫描本机 Mod。</div></section><footer><div id="app_build">条目浏览库 · 正在连接后台</div><div id="storage"></div></footer></main>
+<section class="card wide"><div class="row"><h2 class="grow" data-i18n="header.task_progress">任务进度</h2><span id="status" class="status" data-i18n="task.idle">待命</span></div><div id="task_list" class="task-list" aria-label="各 Mod 任务"></div><div id="logs" class="logs" data-i18n="task.ready_log">准备就绪。先保存接口设置，再扫描本机 Mod。</div></section>
+<footer class="app-footer">
+  <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div><div id="app_build" data-i18n="entry.app_build">条目浏览库 · 正在连接后台</div><div id="storage"></div></div>
+    <div class="footer-links">
+      <span>Paradox AI Translator</span>
+      <span class="sep">·</span>
+      <a href="https://github.com/sdloghub/paradox-ai-translator" target="_blank" rel="noopener noreferrer" class="footer-github">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>sdloghub / paradox-ai-translator</span>
+      </a>
+    </div>
+  </div>
+</footer></main>
 
 <dialog id="mod_export_dialog" aria-labelledby="mod_export_title">
-  <div class="row"><h2 id="mod_export_title" class="grow">生成独立翻译 Mod</h2><button id="close_mod_export">关闭</button></div>
-  <div class="sub">仅导出当前英文匹配、校验通过的译文。未完成或格式错误的条目不写入补丁；原 Mod 保留。可在生成后下载 ZIP 或打开本机目录。</div>
-  <label for="mod_export_name">翻译 Mod 名称</label><input id="mod_export_name" maxlength="160">
-  <label for="mod_export_intro">简介（可留空自动生成）</label><textarea id="mod_export_intro" rows="5" maxlength="12000" placeholder="写下汉化内容、使用说明或署名；留空使用当前默认 API 配置生成简介"></textarea>
+  <div class="row"><h2 id="mod_export_title" class="grow" data-i18n="mod_export.title">生成独立翻译 Mod</h2><button id="close_mod_export" data-i18n="btn.close">关闭</button></div>
+  <div class="sub" data-i18n="export.notice">仅导出当前英文匹配、校验通过的译文。未完成或格式错误的条目不写入补丁；原 Mod 保留。可在生成后下载 ZIP 或打开本机目录。</div>
+  <label for="mod_export_name" data-i18n="export.mod_name">翻译 Mod 名称</label><input id="mod_export_name" maxlength="160">
+  <label for="mod_export_intro" data-i18n="export.desc_label">简介（可留空自动生成）</label><textarea id="mod_export_intro" rows="5" maxlength="12000" placeholder="写下汉化内容、使用说明或署名；留空使用当前默认 API 配置生成简介"></textarea>
   <div id="mod_export_api_note" class="sub"></div>
-  <div id="mod_export_status" class="notice" role="status" aria-live="polite">准备生成</div>
-  <div class="row"><button id="confirm_mod_export" class="primary">生成翻译 Mod</button><button id="download_mod_export" disabled>下载 Mod ZIP</button><button id="open_mod_export" disabled>打开生成目录</button></div>
-  <details style="margin-top:20px"><summary>Steam 创意工坊投稿</summary><p class="sub">上传接口暂未启用。生成后可复制 description.txt 中的简介，通过游戏启动器手动上传。</p><button disabled>上传至 Steam 创意工坊 · 尚未启用</button></details>
+  <div id="mod_export_status" class="notice" role="status" aria-live="polite" data-i18n="export.ready_status">准备生成</div>
+  <div class="row"><button id="confirm_mod_export" class="primary" data-i18n="btn.generate_mod">生成翻译 Mod</button><button id="download_mod_export" disabled data-i18n="export.download_btn">下载 Mod ZIP</button><button id="open_mod_export" disabled data-i18n="export.open_btn">打开生成目录</button></div>
+  <details style="margin-top:20px"><summary data-i18n="steam_upload.title">Steam 创意工坊投稿</summary><p class="sub" data-i18n="steam_upload.notice">上传接口暂未启用。生成后可复制 description.txt 中的简介，通过游戏启动器手动上传。</p><button disabled data-i18n="steam_upload.btn">上传至 Steam 创意工坊 · 尚未启用</button></details>
 </dialog>
 
 <dialog id="import_step1_dialog" aria-labelledby="import_step1_title">
-  <div class="step-badge">STEP 1 / 2</div>
-  <div class="row"><h2 id="import_step1_title" class="grow">选择导入文件或文件夹</h2><button id="close_import_step1" aria-label="关闭导入窗口">关闭</button></div>
-  <div class="sub">请先选择本机中文 YML 文件、包含中文的文件夹、导出的 ZIP 压缩包或缓存 JSON。选择完成后将进入提示与导入者命名步骤。</div>
+  <div class="step-badge" data-i18n="import_step1.badge">STEP 1 / 2</div>
+  <div class="row"><h2 id="import_step1_title" class="grow" data-i18n="import_step1.title">选择导入文件或文件夹</h2><button id="close_import_step1" aria-label="关闭导入窗口" data-i18n="btn.close">关闭</button></div>
+  <div class="sub" data-i18n="import_step1.desc">请先选择本机中文 YML 文件、包含中文的文件夹、导出的 ZIP 压缩包或缓存 JSON。选择完成后将进入提示与导入者命名步骤。</div>
   <div class="row" style="margin-top:14px">
-    <button id="pick_file" class="primary">选择文件…</button>
-    <button id="pick_folder" class="primary">选择文件夹…</button>
+    <button id="pick_file" class="primary" data-i18n="import_step1.pick_file">选择文件…</button>
+    <button id="pick_folder" class="primary" data-i18n="import_step1.pick_folder">选择文件夹…</button>
     <span id="picker_status" class="sub" role="status" aria-live="polite"></span>
   </div>
-  <label for="import_path">或直接粘贴本机文件 / 文件夹路径</label>
-  <input id="import_path" placeholder="选择文件 / 文件夹，或粘贴本机路径">
+  <label for="import_path" data-i18n="import_step1.path_label">或直接粘贴本机文件 / 文件夹路径</label>
+  <input id="import_path" data-i18n-ph="import_step1.path_placeholder" placeholder="选择文件 / 文件夹，或粘贴本机路径">
   <div class="row" style="margin-top:16px;justify-content:flex-end">
-    <button id="import_next_step" class="primary">下一步：确认并设置导入者名称</button>
+    <button id="import_next_step" class="primary" data-i18n="import_step1.next_btn">下一步：确认并设置导入者名称</button>
   </div>
 </dialog>
 
 <dialog id="import_step2_dialog" aria-labelledby="import_step2_title">
-  <div class="step-badge">STEP 2 / 2</div>
-  <div class="row"><h2 id="import_step2_title" class="grow">确认导入提示与导入者名称</h2><button id="close_import_step2" aria-label="关闭导入确认">取消</button></div>
+  <div class="step-badge" data-i18n="import_step2.badge">STEP 2 / 2</div>
+  <div class="row"><h2 id="import_step2_title" class="grow" data-i18n="import_step2.title">确认导入提示与导入者名称</h2><button id="close_import_step2" aria-label="关闭导入确认" data-i18n="btn.cancel">取消</button></div>
   <div class="selected-path-box">
-    <div class="row"><span class="sub grow">已选导入路径：</span><button id="import_back_step1" style="padding:4px 8px;font-size:11px">重新选择</button></div>
+    <div class="row"><span class="sub grow" data-i18n="import_step2.path_label">已选导入路径：</span><button id="import_back_step1" style="padding:4px 8px;font-size:11px" data-i18n="import_step2.reselect_btn">重新选择</button></div>
     <div id="import_selected_path" class="path" style="margin-top:4px"></div>
   </div>
-  <div class="notice">提取所选中文文件并与当前 Mod 英文建立缓存对应关系。<br>导入缓存无法检查是否需要更新：带哈希缓存仅校验本机英文，无法检查 Steam 尚未安装的更新；无哈希中文文件无法判断原文是否更新，请确认来源版本。已有哈希不同的旧译文、冲突译文和格式错误会自动跳过。</div>
-  <label for="import_provider">导入者名称（可留空自动命名）</label>
-  <input id="import_provider" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
-  <div class="sub" style="margin-top:6px">提示：可留空自动命名，系统会按日期与序号自动生成来源名称（如「翻译-2026-10-17-1」）。</div>
+  <div class="notice" data-i18n="import_step2.warning">提取所选中文文件并与当前 Mod 英文建立缓存对应关系。<br>导入缓存无法检查是否需要更新：带哈希缓存仅校验本机英文，无法检查 Steam 尚未安装的更新；无哈希中文文件无法判断原文是否更新，请确认来源版本。已有哈希不同的旧译文、冲突译文和格式错误会自动跳过。</div>
+  <label for="import_provider" data-i18n="import_step2.provider_label">导入者名称（可留空自动命名）</label>
+  <input id="import_provider" data-i18n-ph="import_step2.provider_placeholder" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
+  <div class="sub" style="margin-top:6px" data-i18n="import_step2.provider_hint">提示：可留空自动命名，系统会按日期与序号自动生成来源名称（如「翻译-2026-10-17-1」）。</div>
   <div class="cache-options" style="margin-top:12px;padding:10px 12px">
-    <div class="sub" style="margin-bottom:6px"><strong>外部译文术语表提取规则：</strong>若导入本程序导出的包（含 <code>.cache.json</code>），系统会直接从包内已有中英文对照（优先 &lt;5 个单词的短键值）自动提取成术语表，不消耗 Token。</div>
-    <label><input type="checkbox" id="import_extract_glossary_ai"> 若导入纯 <code>.yml</code> 文件，使用 AI 自动提取中文重复出现内容做术语表（备注：可能会消耗较多 Token）</label>
+    <div class="sub" style="margin-bottom:6px"><strong data-i18n="import_step2.glossary_rule_title">外部译文术语表提取规则：</strong><span data-i18n="import_step2.glossary_rule_desc_1">若导入本程序导出的包（含</span> <code>.cache.json</code><span data-i18n="import_step2.glossary_rule_desc_2">），系统会直接从包内已有中英文对照（优先 &lt;5 个单词的短键值）自动提取成术语表，不消耗 Token。</span></div>
+    <label><input type="checkbox" id="import_extract_glossary_ai"> <span data-i18n="import_step2.ai_glossary_label">若导入纯 <code>.yml</code> 文件，使用 AI 自动提取中文高频术语</span></label>
   </div>
   <div class="row" style="margin-top:18px;justify-content:flex-end">
-    <button id="cancel_import_step2">返回上一步</button>
-    <button id="import_cache" class="primary">确认并导入</button>
+    <button id="cancel_import_step2" data-i18n="import_step2.back_btn">返回上一步</button>
+    <button id="import_cache" class="primary" data-i18n="import_step2.confirm_btn">确认并导入</button>
   </div>
 </dialog>
 
 <dialog id="glossary_dialog" aria-labelledby="glossary_dialog_title" style="max-width:780px;width:min(780px,calc(100vw - 24px))">
-  <div class="row"><h2 id="glossary_dialog_title" class="grow" style="margin:0">词云扫描与术语表工作台</h2><button type="button" id="close_glossary_dialog">关闭</button></div>
-  <div class="sub" style="margin-top:6px">翻译前先扫描英文生成高频词云：优先考虑少于 5 个单词的单独键值；也可开启长键值扫描或 AI 提取（备注：AI 提取/审批可能会花较多 Token）。勾选并确认译名后，将在正式翻译时注入提示词以统一全 Mod 译名。</div>
+  <div class="row"><h2 id="glossary_dialog_title" class="grow" style="margin:0" data-i18n="glossary.title">词云扫描与术语表工作台</h2><button type="button" id="close_glossary_dialog" data-i18n="btn.close">关闭</button></div>
+  <div class="sub" style="margin-top:6px" data-i18n="glossary_modal.desc">翻译前先扫描英文生成高频词云：优先考虑少于 5 个单词的单独键值；也可开启长键值扫描或 AI 提取（备注：AI 提取/审批可能会花较多 Token）。勾选并确认译名后，将在正式翻译时注入提示词以统一全 Mod 译名。</div>
   <div class="field-grid" style="margin-top:10px">
-    <div><label for="dialog_extract_mode">扫描与提取模式</label><select id="dialog_extract_mode"><option value="short_keys">1. 只扫短键值（&lt;5 个单词独立键值多次出现）</option><option value="long_extract">2. 在长键值中提取（短键值 + 长句高频词）</option><option value="ai_extract">3. AI 提取（备注：可能会花较多 Token）</option></select></div>
-    <div><label for="dialog_approval_mode">审批模式</label><select id="dialog_approval_mode"><option value="manual">手动勾选与编辑术语表</option><option value="ai_approve">AI 自动审批并补全译名（消耗 Token）</option></select></div>
+    <div><label for="dialog_extract_mode" data-i18n="glossary_modal.scan_mode">扫描与提取模式</label><select id="dialog_extract_mode"><option value="short_keys" data-i18n="glossary_modal.short_keys">1. 只扫短键值（&lt;5 个单词独立键值多次出现）</option><option value="long_extract" data-i18n="glossary_modal.long_extract">2. 在长键值中提取（短键值 + 长句高频词）</option><option value="ai_extract" data-i18n="glossary_modal.ai_extract">3. AI 提取（备注：可能会花较多 Token）</option></select></div>
+    <div><label for="dialog_approval_mode" data-i18n="glossary_modal.approval_mode">审批模式</label><select id="dialog_approval_mode"><option value="manual" data-i18n="glossary_modal.manual">手动勾选与编辑术语表</option><option value="ai_approve" data-i18n="glossary_modal.ai_approve">AI 自动审批并补全译名（消耗 Token）</option></select></div>
   </div>
   <div class="row" style="margin-top:10px">
-    <button type="button" id="scan_glossary_now" class="scan-action">重新扫描英文词云</button>
-    <button type="button" id="ai_approve_glossary_now" class="ai-action">AI 自动审批补全译名</button>
-    <button type="button" id="browser_scan_glossary_now">浏览器本地引擎秒扫词云</button>
+    <button type="button" id="scan_glossary_now" class="scan-action" data-i18n="glossary_modal.rescan_btn">重新扫描英文词云</button>
+    <button type="button" id="ai_approve_glossary_now" class="ai-action" data-i18n="glossary_modal.ai_approve_btn">AI 自动审批补全译名</button>
+    <button type="button" id="browser_scan_glossary_now" data-i18n="glossary_modal.browser_scan_btn">浏览器本地引擎秒扫词云</button>
     <span id="glossary_dialog_status" class="sub grow" role="status"></span>
   </div>
-  <div class="sub" style="margin-top:10px;font-weight:600">高频词云预览（点击词条可快速启用/停用）：</div>
-  <div id="glossary_wordcloud" class="wordcloud-box"><div class="sub">尚未提取词云，请点击上方「重新扫描英文词云」。</div></div>
+  <div class="sub" style="margin-top:10px;font-weight:600" data-i18n="glossary_modal.cloud_preview">高频词云预览（点击词条可快速启用/停用）：</div>
+  <div id="glossary_wordcloud" class="wordcloud-box"><div class="sub" data-i18n="glossary_modal.cloud_empty">尚未提取词云，请点击上方「重新扫描英文词云」。</div></div>
   <div class="row" style="margin-top:10px">
     <input id="new_glossary_term" class="grow" placeholder="手动添加英文术语（如 Galactic Empire）" style="width:auto">
     <input id="new_glossary_trans" class="grow" placeholder="对应目标语言译名（如 银河帝国）" style="width:auto">
-    <button type="button" id="add_glossary_term_btn">添加术语</button>
+    <button type="button" id="add_glossary_term_btn" data-i18n="glossary_modal.add_term_btn">添加术语</button>
   </div>
   <div class="glossary-table-wrap">
-    <table class="glossary-table"><thead><tr><th style="width:56px">启用</th><th>英文术语</th><th style="width:90px">频次 / 来源</th><th>目标译名（可修改）</th><th style="width:60px">操作</th></tr></thead><tbody id="glossary_table_rows"></tbody></table>
+    <table class="glossary-table"><thead><tr><th style="width:56px" data-i18n="glossary_modal.th_enable">启用</th><th data-i18n="glossary_modal.th_term">英文术语</th><th style="width:90px" data-i18n="glossary_modal.th_count">频次 / 来源</th><th data-i18n="glossary_modal.th_trans">目标译名（可修改）</th><th style="width:60px" data-i18n="glossary_modal.th_action">操作</th></tr></thead><tbody id="glossary_table_rows"></tbody></table>
   </div>
   <div class="row" style="margin-top:16px;justify-content:flex-end">
-    <button type="button" id="save_glossary_btn" class="primary">保存术语表设置</button>
-    <button type="button" id="save_and_translate_glossary_btn" class="ai-action">保存并开始正式翻译</button>
+    <button type="button" id="save_glossary_btn" class="primary" data-i18n="glossary_modal.save_btn">保存术语表设置</button>
+    <button type="button" id="save_and_translate_glossary_btn" class="ai-action" data-i18n="glossary_modal.save_translate_btn">保存并开始正式翻译</button>
   </div>
 </dialog>
 
-<dialog id="confirmation" aria-labelledby="confirmation_title"><h2 id="confirmation_title">确认操作</h2><p id="confirmation_text" style="white-space:pre-line;line-height:1.8"></p><div class="row"><button id="cancel_action">取消</button><button class="primary" id="confirm_action">确认执行</button></div></dialog>
+<dialog id="confirmation" aria-labelledby="confirmation_title"><h2 id="confirmation_title" data-i18n="dialog.confirm_title">确认操作</h2><p id="confirmation_text" style="white-space:pre-line;line-height:1.8"></p><div class="row"><button id="cancel_action" data-i18n="dialog.cancel_btn">取消</button><button class="primary" id="confirm_action" data-i18n="dialog.confirm_btn">确认执行</button></div></dialog>
 <dialog id="translate_confirmation" aria-labelledby="translate_confirmation_title">
-  <h2 id="translate_confirmation_title">翻译确认</h2>
+  <h2 id="translate_confirmation_title" data-i18n="confirm_modal.title">翻译确认</h2>
   <p id="translate_mod_name" style="font-weight:500;margin-bottom:1em"></p>
   <div style="display:flex;align-items:center;gap:1em;margin-bottom:1em;flex-wrap:wrap">
     <label style="display:flex;align-items:center;gap:0.5em;white-space:nowrap">
       <input type="checkbox" id="translate_use_ai_checkbox" checked>
-      <span>使用 AI 翻译补全</span>
+      <span data-i18n="confirm_modal.use_ai">使用 AI 翻译补全</span>
     </label>
     <div id="translate_ai_options" style="display:flex;align-items:center;gap:0.5em;flex:1;min-width:200px">
-      <label for="translate_provider_select" style="white-space:nowrap">API 服务商</label>
+      <label for="translate_provider_select" style="white-space:nowrap" data-i18n="confirm_modal.provider_label">API 服务商</label>
       <select id="translate_provider_select" style="flex:1;max-width:300px"></select>
     </div>
   </div>
   <div id="translate_workflow_box" class="cache-options" style="margin:10px 0">
-    <label for="confirm_workflow_mode" style="font-weight:600;margin-bottom:6px">选择本次翻译模式</label>
+    <label for="confirm_workflow_mode" style="font-weight:600;margin-bottom:6px" data-i18n="confirm_modal.mode_label">选择本次翻译模式</label>
     <select id="confirm_workflow_mode">
-      <option value="fast">1. 快速模式（无术语表 · 节省消耗）</option>
-      <option value="glossary">2. 术语表模式（统一高频术语译名）</option>
+      <option value="fast" data-i18n="confirm_modal.fast_mode">1. 快速模式（无术语表 · 节省消耗）</option>
+      <option value="glossary" data-i18n="confirm_modal.glossary_mode">2. 术语表模式（统一高频术语译名）</option>
     </select>
     <div id="confirm_glossary_sub" hidden style="margin-top:8px">
-      <label for="confirm_extract_mode">术语表提取子模式</label>
+      <label for="confirm_extract_mode" data-i18n="confirm_modal.extract_label">术语表提取子模式</label>
       <select id="confirm_extract_mode">
-        <option value="short_keys">1. 只扫短键值（优先 &lt;5 个单词的独立键值）</option>
-        <option value="long_extract">2. 在长键值中提取（短键值 + 长键值高频词）</option>
-        <option value="ai_extract">3. AI 提取（备注：可能会花较多 Token）</option>
+        <option value="short_keys" data-i18n="confirm_modal.extract_short">1. 只扫短键值（优先 &lt;5 个单词的独立键值）</option>
+        <option value="long_extract" data-i18n="confirm_modal.extract_long">2. 在长键值中提取（短键值 + 长键值高频词）</option>
+        <option value="ai_extract" data-i18n="glossary_modal.ai_extract">3. AI 提取（备注：可能会花较多 Token）</option>
       </select>
-      <label for="confirm_approval_mode" style="margin-top:8px">术语审批方式</label>
+      <label for="confirm_approval_mode" style="margin-top:8px" data-i18n="confirm_modal.approval_label">术语审批方式</label>
       <select id="confirm_approval_mode">
-        <option value="manual">先在界面展示词云/术语列表供勾选修改后再翻译</option>
-        <option value="ai_approve">AI 自动审批并直接开始翻译（备注：可能花较多 Token）</option>
+        <option value="manual" data-i18n="confirm_modal.approval_manual">先在界面展示词云/术语列表供勾选修改后再翻译</option>
+        <option value="ai_approve" data-i18n="confirm_modal.approval_ai">AI 自动审批并直接开始翻译（备注：可能花较多 Token）</option>
       </select>
       <div class="row" style="margin-top:8px">
-        <button type="button" id="confirm_open_glossary_btn" class="scan-action" style="padding:6px 10px">先打开词云/术语表勾选修改</button>
+        <button type="button" id="confirm_open_glossary_btn" class="scan-action" style="padding:6px 10px" data-i18n="confirm_modal.open_glossary_btn">先打开词云/术语表勾选修改</button>
       </div>
     </div>
   </div>
   <p id="translate_note" class="sub" style="margin-top:1em"></p>
   <p id="translate_details" class="sub" style="white-space:pre-line;line-height:1.6;margin-top:0.5em"></p>
-  <div class="row"><button id="cancel_translate_action">取消</button><button class="primary" id="confirm_translate_action">确认翻译</button></div>
+  <div class="row"><button id="cancel_translate_action" data-i18n="dialog.cancel_btn">取消</button><button class="primary" id="confirm_translate_action" data-i18n="dialog.confirm_translate">确认翻译</button></div>
+</dialog>
+
+<dialog id="custom_lang_dialog" class="custom-lang-dialog">
+  <form method="dialog" id="custom_lang_form">
+    <div class="dialog-header">
+      <h3 style="margin:0;font-size:16px" data-i18n="custom_lang.title">用自己的 API Token 制作界面翻译</h3>
+      <button type="button" class="dialog-close" id="close_custom_lang" aria-label="关闭">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <div class="sub" style="margin-bottom:12px" data-i18n="custom_lang.intro">程序将调用您配置的 API 模型，自动将界面所有文本、按钮和选项翻译为新语言，并持久化保存于本地配置中。</div>
+      <label for="custom_lang_code" data-i18n="custom_lang.code_label">目标语言代码 (Language Code)</label>
+      <input id="custom_lang_code" placeholder="如：fr, de, es, it, pl, pt-br" required pattern="^[a-zA-Z]{2,5}(-[a-zA-Z]{2,5})?$">
+      <div class="sub" style="margin-top:-6px;margin-bottom:10px" data-i18n="custom_lang.code_hint">常用代码：fr (法语), de (德语), es (西班牙语), it (意大利语), pl (波兰语)</div>
+      
+      <label for="custom_lang_name" data-i18n="custom_lang.name_label">界面显示名称 (Display Name)</label>
+      <input id="custom_lang_name" placeholder="如：Français, Deutsch, Español" required>
+      
+      <label for="custom_lang_key" data-i18n="custom_lang.key_label">API Key（留空则复用当前设置中的 API Key）</label>
+      <input id="custom_lang_key" type="password" autocomplete="new-password" placeholder="留空则复用设置中的 Key">
+      
+      <div class="field-grid">
+        <div>
+          <label for="custom_lang_url">Base URL</label>
+          <input id="custom_lang_url" data-i18n-ph="custom_lang.url_ph" placeholder="留空复用设置">
+        </div>
+        <div>
+          <label for="custom_lang_model" data-i18n="custom_lang.model_label">模型名称</label>
+          <input id="custom_lang_model" data-i18n-ph="custom_lang.model_ph" placeholder="留空复用设置">
+        </div>
+      </div>
+      <div id="custom_lang_status" class="notice" style="margin-top:12px;font-size:12px" hidden></div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="cancel_custom_lang" data-i18n="custom_lang.cancel_btn">取消</button>
+      <button type="submit" id="submit_custom_lang" class="primary" data-i18n="custom_lang.submit_btn">开始生成并切换</button>
+    </div>
+  </form>
 </dialog>
 <script src="/localization_ui.js"></script><script src="/browser_translator.js"></script><script src="/vendor/gsap.min.js"></script><script src="/vendor/ScrollTrigger.min.js"></script><script>
-const token='__APP_TOKEN__';let state=null,selected=null,initialized=false,lastJob=null,steamWindow=null,activeGame=null,pickingImport=false;const games={st:'群星',hoi4:'钢铁雄心4',eu4:'欧陆风云4',ck3:'十字军之王3',vic3:'维多利亚3'};const $=id=>document.getElementById(id);
+const token='__APP_TOKEN__';let state=null,selected=null,initialized=false,lastJob=null,steamWindow=null,activeGame=null,pickingImport=false;
+const defaultGames = {st:'群星',hoi4:'钢铁雄心4',eu4:'欧陆风云4',ck3:'十字军之王3',vic3:'维多利亚3'};
+const getGames = () => (typeof window.getGamesMap === 'function') ? window.getGamesMap() : defaultGames;
+const getGameName = (code) => (typeof window.getGameName === 'function') ? window.getGameName(code) : (defaultGames[code] || code);
+const $=id=>document.getElementById(id);
 
 function applyTheme(theme){
   const valid=['light','dark','hc-light','hc-dark'];
@@ -521,10 +621,10 @@ function applyTheme(theme){
 })();
 
 function escapeText(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function ask(message,label="确认执行"){return new Promise(resolve=>{const dialog=$('confirmation');$('confirmation_text').textContent=message;$('confirm_action').textContent=label;$('confirm_action').className=label==='确认翻译'?'ai-action':(label.includes('清除')||label.includes('删除'))?'danger-action':'primary';$('cancel_action').onclick=()=>{dialog.close();resolve(false);};$('confirm_action').onclick=()=>{dialog.close();resolve(true);};dialog.oncancel=()=>resolve(false);dialog.showModal();});}
+function ask(message,label){if(!label)label=window.t('dialog.confirm_btn','确认执行');return new Promise(resolve=>{const dialog=$('confirmation');$('confirmation_text').textContent=message;$('confirm_action').textContent=label;$('confirm_action').className=label===window.t('dialog.confirm_translate','确认翻译')?'ai-action':(label.includes('清除')||label.includes('删除')||label.includes('Clear')||label.includes('Delete'))?'danger-action':'primary';$('cancel_action').onclick=()=>{dialog.close();resolve(false);};$('confirm_action').onclick=()=>{dialog.close();resolve(true);};dialog.oncancel=()=>resolve(false);dialog.showModal();});}
 function toast(message){$('toast').textContent=message;$('toast').style.display='block';}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body===undefined?'GET':'POST',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'请求失败');return data;}
-function statsText(mod){const c=mod.counts;if(!c)return '未扫描';if(c.error)return '扫描失败：'+c.error;return `${mod.scan_state==='待复查'?'待复查 · 上次结果：':''}已翻译 ${c.deployed??c.translated} · 已缓存 ${c.cached||0} · 未翻译 ${c.untranslated-(c.needs_update||0)} · 需更新 ${c.needs_update||0}${c.parse_errors?" · 格式报错 "+c.parse_errors+" 行":""}`;}
+function statsText(mod){const c=mod.counts;if(!c)return window.t('stats.unscanned','未扫描');if(c.error)return window.t('stats.scan_failed','扫描失败：'+c.error,{error:c.error});const prefix=mod.scan_state==='待复查'?window.t('stats.needs_review_prefix','待复查 · 上次结果：'):'';const parseErr=c.parse_errors?' · '+window.t('stats.parse_errors','格式报错 '+c.parse_errors+' 行',{count:c.parse_errors}):'';return `${prefix}${window.t('stats.deployed','已翻译')} ${c.deployed??c.translated} · ${window.t('stats.cached','已缓存')} ${c.cached||0} · ${window.t('stats.untranslated','未翻译')} ${c.untranslated-(c.needs_update||0)} · ${window.t('stats.needs_update','需更新')} ${c.needs_update||0}${parseErr}`;}
 
 function modJob(id=selected){return state?.jobs?.[id]||{running:false,kind:'',messages:[],result:null,error:null};}
 function globalBusy(){return !!state?.jobs?.__global__?.running&&state.jobs.__global__.kind!=='scan';}
@@ -547,12 +647,12 @@ function modSortGroup(mod){
 }
 function modStatusBadge(mod){
   const group=modSortGroup(mod);
-  if(group===0)return '<span class="badge warn">待完成翻译</span>';
-  if(group===1)return '<span class="badge ok">已完全翻译</span>';
-  return '<span class="badge">未扫描</span>';
+  if(group===0)return `<span class="badge warn">${window.t('badge.needs_trans','待完成翻译')}</span>`;
+  if(group===1)return `<span class="badge ok">${window.t('badge.fully_trans','已完全翻译')}</span>`;
+  return `<span class="badge">${window.t('badge.unscanned','未扫描')}</span>`;
 }
 
-function renderCategories(){ $('categories').innerHTML=Object.entries(games).map(([game,title])=>`<button class="category" role="tab" aria-selected="${activeGame===game}" data-game="${game}">${title}<span>${state.mods.filter(m=>m.game===game).length}</span></button>`).join('');document.querySelectorAll('[data-game]').forEach(button=>button.onclick=()=>{activeGame=button.dataset.game;selected=null;renderCategories();renderMods();renderSelection();});}
+function renderCategories(){ const gmap=getGames();$('categories').innerHTML=['st','hoi4','eu4','ck3','vic3'].map(game=>`<button class="category" role="tab" aria-selected="${activeGame===game}" data-game="${game}">${escapeText(gmap[game]||game)}<span>${state.mods.filter(m=>m.game===game).length}</span></button>`).join('');document.querySelectorAll('[data-game]').forEach(button=>button.onclick=()=>{activeGame=button.dataset.game;selected=null;renderCategories();renderMods();renderSelection();});}
 function renderMods(){
   renderCategories();
   const query=window.serverWorkshopLinks?'':$('search').value.toLowerCase();
@@ -564,42 +664,43 @@ function renderMods(){
       if(ga!==gb)return ga-gb;
       return String(a.title||'').localeCompare(String(b.title||''),'zh-CN')||String(a.uid).localeCompare(String(b.uid));
     });
-  $('mods').innerHTML=mods.map(m=>`<button class="mod ${selected===m.id?'selected':''}" data-id="${escapeText(m.id)}" aria-pressed="${selected===m.id}"><strong>${escapeText(m.title)}</strong><div class="row sub"><span>UID ${escapeText(m.uid)}</span>${modJob(m.id).running?'<span class="badge info">任务进行中</span>':modStatusBadge(m)}<span class="badge info">${escapeText(m.name_source)}</span>${m.translated?'<span class="badge purple">已有备份</span>':''}</div><div class="sub">${escapeText(statsText(m))}</div></button>`).join('')||`<div class="empty">${!activeGame?'选择上方游戏分类，查看该游戏的本机模组。':query?'当前游戏中没有匹配的模组。':'该游戏暂无已扫描模组。可点击「扫描更新」。'}</div>`;
-  $('count').textContent=`本地清单 ${state.mods.length} 个 · ${activeGame?games[activeGame]+' '+mods.length+' 个':'请选择游戏'}`;
+  const emptyMsg=!activeGame?window.t('mods.empty_no_game','选择上方游戏分类，查看该游戏的本机模组。'):query?window.t('mods.empty_no_match','当前游戏中没有匹配的模组。'):window.t('mods.empty_no_scanned','该游戏暂无已扫描模组。可点击「刷新目录」。');
+  $('mods').innerHTML=mods.map(m=>`<button class="mod ${selected===m.id?'selected':''}" data-id="${escapeText(m.id)}" aria-pressed="${selected===m.id}"><strong>${escapeText(m.title)}</strong><div class="row sub"><span>UID ${escapeText(m.uid)}</span>${modJob(m.id).running?`<span class="badge info">${window.t('badge.running','任务进行中')}</span>`:modStatusBadge(m)}<span class="badge info">${escapeText(m.name_source)}</span>${m.translated?`<span class="badge purple">${window.t('badge.backed_up','已有备份')}</span>`:''}</div><div class="sub">${escapeText(statsText(m))}</div></button>`).join('')||`<div class="empty">${emptyMsg}</div>`;
+  $('count').textContent=activeGame?window.t('mods.count_summary','本地清单 {total} 个 · {game} {count} 个',{total:state.mods.length,game:getGameName(activeGame),count:mods.length}):window.t('mods.count_select_game','本地清单 {total} 个 · 请选择游戏',{total:state.mods.length});
   document.querySelectorAll('[data-id]').forEach(e=>e.onclick=()=>{selected=e.dataset.id;renderMods();renderSelection();});
   revealMods();
 }
 function revealMods(){if(document.querySelector('.mod')&&window.gsap&&!matchMedia('(prefers-reduced-motion: reduce)').matches)gsap.fromTo('.mod',{opacity:0,y:5},{opacity:1,y:0,duration:.3,stagger:.025,overwrite:true});}
 
 function openSteam(mod){if(steamWindow&&!steamWindow.closed){try{steamWindow.location.href=mod.url;steamWindow.focus();return;}catch(e){}}steamWindow=window.open(mod.url,'WorkshopSteamPreview');if(!steamWindow)toast('浏览器阻止了 Steam 窗口，请允许本机页面打开弹出窗口。');}
-function renderSelection(){renderHistory();renderTaskLogs();if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent='在左侧选择一个 Mod，查看路径并开始翻译。';updateControls();return;}const cache=mod.cache_selection||{enabled:true,version_id:null,versions:[]};$('use_cache').checked=cache.enabled;$('cache_version').innerHTML='<option value="">最新缓存（默认）</option>'+(cache.versions||[]).map(v=>`<option value="${v.id}">版本 ${v.id} · ${escapeText(v.created_at)} · ${escapeText(v.provider||'历史备份')}</option>`).join('');$('cache_version').value=cache.version_id??'';$('cache_version').disabled=!cache.enabled||modBusy();$('cache_details').hidden=!cache.enabled;$('cache_note').textContent=(cache.enabled?'已启用所选缓存，切换使用此 Mod 的上次扫描结果；文件变化后请重新扫描。':'缓存复用已关闭：已缓存条目改为未翻译，保留本机已有中文。')+' 仅校验本机英文哈希，无法检查 Steam 尚未安装的更新。';$('translation_notice').textContent=state.demo?'演示模式：遵循缓存选项，使用固定示例译文，不访问 Steam 或付费模型。':(cache.enabled?'开始前自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目。':'缓存复用已关闭；保留本机已有中文，其余条目重新请求 AI 翻译。')+' 英文会发送到配置的模型接口，可能产生费用。完成后备份并回写；失败行保留英文。';$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>总条目</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>已翻译</span></div><div><b>${mod.counts.cached||0}</b><span>已缓存</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>未翻译</span></div><div><b>${mod.counts.needs_update||0}</b><span>需更新</span></div><div><b>${mod.counts.parse_errors||0}</b><span>格式错误</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||'暂无有效译文')}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);if(typeof syncGlossaryControls==='function')syncGlossaryControls();updateControls();}
+function renderSelection(){renderHistory();renderTaskLogs();if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent=window.t('mods.selection_empty','在左侧选择一个 Mod，查看路径并开始翻译。');updateControls();return;}const cache=mod.cache_selection||{enabled:true,version_id:null,versions:[]};$('use_cache').checked=cache.enabled;$('cache_version').innerHTML='<option value="">'+window.t('cache.latest_default','最新缓存（默认）')+'</option>'+(cache.versions||[]).map(v=>`<option value="${v.id}">${window.t('cache.version_option','版本 {id} · {date} · {provider}',{id:v.id,date:escapeText(v.created_at),provider:escapeText(v.provider||window.t('cache.historical_provider','历史备份'))})}</option>`).join('');$('cache_version').value=cache.version_id??'';$('cache_version').disabled=!cache.enabled||modBusy();$('cache_details').hidden=!cache.enabled;$('cache_note').textContent=(cache.enabled?'已启用所选缓存，切换使用此 Mod 的上次扫描结果；文件变化后请重新扫描。':'缓存复用已关闭：已缓存条目改为未翻译，保留本机已有中文。')+' 仅校验本机英文哈希，无法检查 Steam 尚未安装的更新。';$('translation_notice').textContent=state.demo?'演示模式：遵循缓存选项，使用固定示例译文，不访问 Steam 或付费模型。':(cache.enabled?'开始前自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目。':'缓存复用已关闭；保留本机已有中文，其余条目重新请求 AI 翻译。')+' 英文会发送到配置的模型接口，可能产生费用。完成后备份并回写；失败行保留英文。';$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>${window.t('stats.total_entries','总条目')}</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>${window.t('stats.deployed','已翻译')}</span></div><div><b>${mod.counts.cached||0}</b><span>${window.t('stats.cached','已缓存')}</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>${window.t('stats.untranslated','未翻译')}</span></div><div><b>${mod.counts.needs_update||0}</b><span>${window.t('stats.needs_update','需更新')}</span></div><div><b>${mod.counts.parse_errors||0}</b><span>${window.t('stats.parse_errors','格式错误')}</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||window.t('stats.no_valid_trans','暂无有效译文'))}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview" data-i18n="btn.steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);if(typeof syncGlossaryControls==='function')syncGlossaryControls();updateControls();}
 const expandedHistoryMods=new Set();
-function renderHistory(){const mod=state.mods.find(m=>m.id===selected);const ready=!!mod&&(state.analyzed_mod_ids||[]).includes(mod.id)&&mod.scan_state==='已扫描'&&!mod.counts?.error;$('history_panel').hidden=!ready;const entries=ready?(state.history||[]).filter(v=>v.mod_id===mod.id):[];if(!ready){$('history').innerHTML='';return;}$('nohistory').hidden=!!entries.length;$('nohistory').textContent='该 Mod 暂无历史备份；翻译完成后会自动保存在这里。';const groupsMap=new Map();for(const v of entries){if(!groupsMap.has(v.mod_id))groupsMap.set(v.mod_id,[]);groupsMap.get(v.mod_id).push(v);}const groups=Array.from(groupsMap.entries());$('history').innerHTML=groups.map(([modId,versions])=>{const latest=versions[0];const isOpen=expandedHistoryMods.has(modId);return `<details class="history-mod-group" data-history-mod="${escapeText(modId)}" ${isOpen?'open':''}><summary class="history-mod-summary"><div class="grow"><strong>${escapeText(latest.title)} · 翻译版本</strong><div class="row sub" style="margin-top:4px"><span>UID ${escapeText(latest.uid)}</span><span class="badge info">共 ${versions.length} 个版本</span><span class="badge ok">${escapeText(latest.status)}</span><span>最新备份：${escapeText(new Date(latest.created_at).toLocaleString())}</span></div></div></summary><div class="history-mod-versions"><table><thead><tr><th>翻译版本 / 来源</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${versions.map(v=>`<tr><td><strong>版本 #${v.version_id}</strong><br><span class="sub">来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button> <button class="danger-action" data-delete-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)?'disabled':''}>删除缓存</button></td></tr>`).join('')}</tbody></table></div></details>`;}).join('');document.querySelectorAll('[data-history-mod]').forEach(d=>d.ontoggle=()=>{if(d.open)expandedHistoryMods.add(d.dataset.historyMod);else expandedHistoryMods.delete(d.dataset.historyMod);});document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-delete-version]');if(!button)return;const version=state.history.find(v=>v.version_id===Number(button.dataset.deleteVersion)&&v.mod_id===button.dataset.mod);if(!version)return;if(!await ask(`删除「${version.title}」的缓存版本 #${version.version_id}？\n来源：${version.provider||'历史版本'}\n将永久删除此版本的 SQL 备份记录和仅由此版本保留的缓存映射。其他版本和本机中文文件保留。`,'确认删除缓存'))return;try{await api('delete-cache-version',{id:version.mod_id,version_id:version.version_id});await refresh();}catch(e){toast(e.message);}});
-async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?'已保存；留空保留':'尚未设置';initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">选择已保存的配置</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · 未保存密钥'}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('developer_exports').hidden=false;$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/generated_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.analyzed_mod_ids)!==JSON.stringify(state.analyzed_mod_ids)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderHistory();}updateControls();
+function renderHistory(){const mod=state.mods.find(m=>m.id===selected);const ready=!!mod&&(state.analyzed_mod_ids||[]).includes(mod.id)&&mod.scan_state==='已扫描'&&!mod.counts?.error;$('history_panel').hidden=!ready;const entries=ready?(state.history||[]).filter(v=>v.mod_id===mod.id):[];if(!ready){$('history').innerHTML='';return;}$('nohistory').hidden=!!entries.length;$('nohistory').textContent=window.t('mods.nohistory_empty','该 Mod 暂无历史备份；翻译完成后会自动保存在这里。');const groupsMap=new Map();for(const v of entries){if(!groupsMap.has(v.mod_id))groupsMap.set(v.mod_id,[]);groupsMap.get(v.mod_id).push(v);}const groups=Array.from(groupsMap.entries());$('history').innerHTML=groups.map(([modId,versions])=>{const latest=versions[0];const isOpen=expandedHistoryMods.has(modId);return `<details class="history-mod-group" data-history-mod="${escapeText(modId)}" ${isOpen?'open':''}><summary class="history-mod-summary"><div class="grow"><strong>${escapeText(latest.title)} · 翻译版本</strong><div class="row sub" style="margin-top:4px"><span>UID ${escapeText(latest.uid)}</span><span class="badge info">${window.t('badge.history_versions','共 {count} 个版本',{count:versions.length})}</span><span class="badge ok">${escapeText(latest.status)}</span><span>最新备份：${escapeText(new Date(latest.created_at).toLocaleString())}</span></div></div></summary><div class="history-mod-versions"><table><thead><tr><th>翻译版本 / 来源</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${versions.map(v=>`<tr><td><strong>版本 #${v.version_id}</strong><br><span class="sub">来源：${escapeText(v.provider||window.t('cache.historical_provider','历史版本'))}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button> <button class="danger-action" data-delete-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)?'disabled':''}>删除缓存</button></td></tr>`).join('')}</tbody></table></div></details>`;}).join('');document.querySelectorAll('[data-history-mod]').forEach(d=>d.ontoggle=()=>{if(d.open)expandedHistoryMods.add(d.dataset.historyMod);else expandedHistoryMods.delete(d.dataset.historyMod);});document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-delete-version]');if(!button)return;const version=state.history.find(v=>v.version_id===Number(button.dataset.deleteVersion)&&v.mod_id===button.dataset.mod);if(!version)return;if(!await ask(`删除「${version.title}」的缓存版本 #${version.version_id}？\n来源：${version.provider||window.t('cache.historical_provider','历史版本')}\n将永久删除此版本的 SQL 备份记录和仅由此版本保留的缓存映射。其他版本和本机中文文件保留。`,window.t('dialog.confirm_delete_cache','确认删除缓存')))return;try{await api('delete-cache-version',{id:version.mod_id,version_id:version.version_id});await refresh();}catch(e){toast(e.message);}});
+async function refresh(){try{const previous=state;state=await api('state');if(!initialized){const c=state.config;$('storage_mode').value=state.config_storage.mode;for(const name of ['config_name','provider','base_url','model','batch_size','concurrency'])$(name).value=c[name];$('libraries').value=c.steam_libraries.join('\n');$('api_key').placeholder=c.has_api_key?window.t('settings.api_key_saved','已保存；留空保留'):window.t('settings.api_key_unset','尚未设置');initialized=true;}if(!previous||JSON.stringify(previous.profiles)!==JSON.stringify(state.profiles)){const chosen=$('profile_select').value;$('profile_select').innerHTML='<option value="">'+window.t('settings.profile_default','选择已保存的配置')+'</option>'+(state.profiles||[]).map(p=>`<option value="${escapeText(p.name)}">${escapeText(p.name)} · ${escapeText(p.model)}${p.has_api_key?'':' · '+window.t('settings.profile_no_key','未保存密钥')}</option>`).join('');$('profile_select').value=chosen;}if(state.demo){$('mode').textContent='演示模式 · 不调用付费接口';}$('app_build').textContent='版本：'+(state.app_version||'旧后台，请重新启动当前目录程序')+' · 程序目录：'+(state.program_dir||'未知');$('developer_exports').hidden=false;$('aggregate_export').checked=state.config.aggregate_export!==false;$('aggregate_location').textContent=state.aggregate_directory||state.data_dir+'/generated_mods';$('config_location').textContent='当前 config.json：'+state.config_storage.path;$('storage').textContent='翻译数据：'+state.data_dir+' · 当前配置：'+state.config_storage.path;if(!previous||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderMods();renderSelection();}if(!previous||JSON.stringify(previous.history)!==JSON.stringify(state.history)||JSON.stringify(previous.analyzed_mod_ids)!==JSON.stringify(state.analyzed_mod_ids)||JSON.stringify(previous.mods)!==JSON.stringify(state.mods)||JSON.stringify(previous.jobs)!==JSON.stringify(state.jobs)){renderHistory();}updateControls();
 $('app_build').textContent='Paradox AI Translator · Your world, Your word!'+(state.app_version?' · v'+state.app_version:'');$('storage').textContent='';
 const translateJobs=Object.entries(state.jobs||{}).filter(([id,j])=>id!=='__global__'&&j.kind==='translate');
 const running=translateJobs.filter(([,j])=>j.running);
-$('status').textContent=running.length?`${running.length} 个 Mod 正在翻译中 · 可切换其他 Mod 并行操作`:'待命';
-$('task_list').innerHTML=translateJobs.map(([id,j])=>`<button data-task-mod="${escapeText(id)}">${escapeText(state.mods.find(m=>m.id===id)?.title||id)} · ${j.running?'翻译中':j.error?'失败':'翻译完成'}</button>`).join('');
+$('status').textContent=running.length?window.t('task.running_count',null,{count:running.length}):window.t('task.idle','待命');
+$('task_list').innerHTML=translateJobs.map(([id,j])=>{const stText=j.running?window.t('task.translating','翻译中'):j.error?window.t('task.failed','失败'):window.t('task.done','翻译完成');return `<button data-task-mod="${escapeText(id)}">${escapeText(state.mods.find(m=>m.id===id)?.title||id)} · ${stText}</button>`;}).join('');
 document.querySelectorAll('[data-task-mod]').forEach(b=>b.onclick=()=>{selected=b.dataset.taskMod;activeGame=state.mods.find(m=>m.id===selected)?.game||activeGame;renderMods();renderSelection();renderTaskLogs();});
 renderTaskLogs();
 for(const [id,j] of Object.entries(state.jobs||{})){
   const prior=previous?.jobs?.[id];
   if(!j.running&&prior?.running){
-    if(j.error)toast((state.mods.find(m=>m.id===id)?.title||'任务')+'：'+j.error);
-    else if(j.kind==='clear-translations')toast(`已清除 ${j.result?.cleared_files||0} 个翻译文件，并重新扫描。`);
-    else if(j.kind==='delete-cache-version')toast(`已删除缓存版本 #${j.result?.version_id} 并更新词条状态。`);
-    if(j.result?.aggregate?.error)toast('自动生成失败：'+j.result.aggregate.error);
+    if(j.error)toast((state.mods.find(m=>m.id===id)?.title||window.t('task.fallback_title','任务'))+'：'+j.error);
+    else if(j.kind==='clear-translations')toast(window.t('toast.cleared_files','已清除 {count} 个翻译文件，并重新扫描。',{count:j.result?.cleared_files||0}));
+    else if(j.kind==='delete-cache-version')toast(window.t('toast.deleted_cache_version','已删除缓存版本 #{version} 并更新词条状态。',{version:j.result?.version_id}));
+    if(j.result?.aggregate?.error)toast(window.t('toast.auto_gen_failed','自动生成失败：{error}',{error:j.result.aggregate.error}));
   }
 }
 syncModExport();if(window.syncEntryBrowser)window.syncEntryBrowser();if(window.syncServerUI)window.syncServerUI();
-}catch(e){toast('连接程序失败：'+e.message);}}
-function renderTaskLogs(){const j=modJob();$('logs').textContent=(j.kind==='translate'&&j.messages.length)?j.messages.join('\n'):'当前暂无前台翻译任务。选择 Mod 并点击「开始 AI 翻译」后，此处将实时显示该 Mod 的翻译进度。';}
-$('save').onclick=async()=>{try{const c={api_format:'openai',provider:$('provider').value.trim(),config_name:$('config_name').value.trim(),base_url:$('base_url').value.trim(),model:$('model').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value),steam_libraries:$('libraries').value.split('\n').map(v=>v.trim()).filter(Boolean)};if($('api_key').value.trim())c.api_key=$('api_key').value.trim();await api('config',c);$('api_key').value='';toast('配置已保存到本机 JSON');initialized=false;await refresh();}catch(e){toast(e.message);}};
-$('switch_storage').onclick=async()=>{try{await api('config-storage',{mode:$('storage_mode').value});initialized=false;await refresh();toast('配置保存位置已切换，当前配置与接口列表已复制');}catch(e){toast(e.message);}};
-$('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!name){toast('请选择已保存的配置');return;}try{await api('profile',{name});$('api_key').value='';initialized=false;await refresh();toast('已切换 API 配置：'+name);}catch(e){toast(e.message);}};
-$('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?'自动生成已开启：每个 Mod 单独生成翻译补丁。':'自动生成已关闭，已有翻译 Mod 保留。');}catch(e){$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
+}catch(e){toast(window.t('toast.connection_failed','连接程序失败：{error}',{error:e.message}));}}
+function renderTaskLogs(){const j=modJob();$('logs').textContent=(j.kind==='translate'&&j.messages.length)?j.messages.join('\n'):window.t('task.no_task_log','当前暂无前台翻译任务。选择 Mod 并点击「开始 AI 翻译」后，此处将实时显示该 Mod 的翻译进度。');}
+$('save').onclick=async()=>{try{const c={api_format:'openai',provider:$('provider').value.trim(),config_name:$('config_name').value.trim(),base_url:$('base_url').value.trim(),model:$('model').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value),steam_libraries:$('libraries').value.split('\n').map(v=>v.trim()).filter(Boolean)};if($('api_key').value.trim())c.api_key=$('api_key').value.trim();await api('config',c);$('api_key').value='';toast(window.t('settings.saved_toast','配置已保存到本机 JSON'));initialized=false;await refresh();}catch(e){toast(e.message);}};
+$('switch_storage').onclick=async()=>{try{await api('config-storage',{mode:$('storage_mode').value});initialized=false;await refresh();toast(window.t('settings.storage_switched_toast','配置保存位置已切换，当前配置与接口列表已复制'));}catch(e){toast(e.message);}};
+$('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!name){toast(window.t('toast.select_profile_toast','请选择已保存的配置'));return;}try{await api('profile',{name});$('api_key').value='';initialized=false;await refresh();toast(window.t('settings.profile_switched_toast','已切换 API 配置：{name}',{name}));}catch(e){toast(e.message);}};
+$('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?window.t('settings.auto_gen_on','自动生成已开启：每个 Mod 单独生成翻译补丁。'):window.t('settings.auto_gen_off','自动生成已关闭，已有翻译 Mod 保留。'));}catch(e){$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
 $('open_aggregate').onclick=async()=>{try{await api('open-aggregate',{});}catch(e){toast(e.message);}};
 $('scan').onclick=async()=>{try{await api('scan',{});await refresh();}catch(e){toast(e.message);}};
 let currentGlossaryTerms=[];
@@ -612,7 +713,7 @@ function syncGlossaryControls(){
     $('glossary_extract_mode').value=gs.extract_mode||'short_keys';
     $('glossary_approval_mode').value=gs.approval_mode||'manual';
     $('glossary_token_warning').hidden=!($('glossary_extract_mode').value==='ai_extract'||$('glossary_approval_mode').value==='ai_approve');
-    $('glossary_summary_badge').textContent=`已存术语 ${gs.total_terms||0} 条 · 已启用译名 ${gs.active_terms||0} 条`;
+    $('glossary_summary_badge').textContent=window.t('glossary.badge_summary','已存术语 {total} 条 · 已启用译名 {active} 条',{total:gs.total_terms||0,active:gs.active_terms||0});
   }
 }
 $('workflow_mode').onchange=async()=>{
@@ -630,8 +731,8 @@ $('glossary_approval_mode').onchange=async()=>{
 function renderGlossaryDialog(){
   const cloud=$('glossary_wordcloud'), tbody=$('glossary_table_rows');
   if(!currentGlossaryTerms.length){
-    cloud.innerHTML='<div class="sub">尚未提取术语。点击上方「重新扫描英文词云」或「浏览器本地引擎秒扫词云」即可生成。</div>';
-    tbody.innerHTML='<tr><td colspan="5" class="sub" style="text-align:center">暂无术语条目</td></tr>';
+    cloud.innerHTML='<div class="sub">'+window.t('glossary.cloud_empty','尚未提取术语。点击上方「重新扫描英文词云」或「浏览器本地引擎秒扫词云」即可生成。')+'</div>';
+    tbody.innerHTML='<tr><td colspan="5" class="sub" style="text-align:center">'+window.t('glossary.table_empty','暂无术语条目')+'</td></tr>';
     return;
   }
   cloud.innerHTML=currentGlossaryTerms.slice(0,80).map((t,idx)=>{
@@ -647,23 +748,23 @@ function renderGlossaryDialog(){
     <td><input type="checkbox" data-g-enable="${idx}" ${t.enabled?'checked':''} style="width:auto"></td>
     <td><strong>${escapeText(t.term)}</strong><div class="sub">${escapeText(t.note||'')}</div></td>
     <td><span class="badge info">×${t.count||1}</span><div class="sub">${escapeText(t.source_mode||'short_keys')}</div></td>
-    <td><input type="text" data-g-trans="${idx}" value="${escapeText(t.translation||'')}" placeholder="输入或由 AI 审批生成译名"></td>
-    <td><button type="button" data-g-del="${idx}" style="padding:4px 8px">删除</button></td>
+    <td><input type="text" data-g-trans="${idx}" value="${escapeText(t.translation||'')}" placeholder="${escapeText(window.t('glossary.trans_placeholder','输入或由 AI 审批生成译名'))}"></td>
+    <td><button type="button" data-g-del="${idx}" style="padding:4px 8px">${window.t('glossary.delete_btn','删除')}</button></td>
   </tr>`).join('');
   tbody.querySelectorAll('[data-g-enable]').forEach(cb=>cb.onchange=()=>{currentGlossaryTerms[Number(cb.dataset.gEnable)].enabled=cb.checked;renderGlossaryDialog();});
   tbody.querySelectorAll('[data-g-trans]').forEach(inp=>inp.oninput=()=>{const i=Number(inp.dataset.gTrans);currentGlossaryTerms[i].translation=inp.value;currentGlossaryTerms[i].approved=Boolean(inp.value.trim());});
   tbody.querySelectorAll('[data-g-del]').forEach(btn=>btn.onclick=()=>{currentGlossaryTerms.splice(Number(btn.dataset.gDel),1);renderGlossaryDialog();});
 }
 async function openGlossaryDialog(){
-  if(!selected){toast('请先在左侧选择一个 Mod');return;}
+  if(!selected){toast(window.t('toast.select_mod_first','请先在左侧选择一个 Mod'));return;}
   $('dialog_extract_mode').value=$('glossary_extract_mode').value||'short_keys';
   $('dialog_approval_mode').value=$('glossary_approval_mode').value||'manual';
-  $('glossary_dialog_status').textContent='正在读取术语表…';
+  $('glossary_dialog_status').textContent=window.t('glossary.status_loading','正在读取术语表…');
   $('glossary_dialog').showModal();
   try{
     const res=await api('glossary',{id:selected});
     currentGlossaryTerms=res.terms||[];
-    $('glossary_dialog_status').textContent=`已加载 ${currentGlossaryTerms.length} 条术语`;
+    $('glossary_dialog_status').textContent=window.t('glossary.status_loaded','已加载 {count} 条术语',{count:currentGlossaryTerms.length});
     renderGlossaryDialog();
   }catch(e){$('glossary_dialog_status').textContent=e.message;}
 }
@@ -671,8 +772,8 @@ $('open_glossary_btn').onclick=openGlossaryDialog;
 $('close_glossary_dialog').onclick=()=>$('glossary_dialog').close();
 $('add_glossary_term_btn').onclick=()=>{
   const term=$('new_glossary_term').value.trim(), trans=$('new_glossary_trans').value.trim();
-  if(!term){toast('请输入英文术语');return;}
-  currentGlossaryTerms.unshift({term,translation:trans,count:1,source_mode:'manual',enabled:true,approved:Boolean(trans),note:'手动添加'});
+  if(!term){toast(window.t('glossary.enter_term_toast','请输入英文术语'));return;}
+  currentGlossaryTerms.unshift({term,translation:trans,count:1,source_mode:'manual',enabled:true,approved:Boolean(trans),note:window.t('glossary.manual_added','手动添加')});
   $('new_glossary_term').value='';$('new_glossary_trans').value='';
   renderGlossaryDialog();
 };
@@ -680,7 +781,7 @@ $('scan_glossary_now').onclick=async()=>{
   if(!selected)return;
   $('scan_glossary_now').disabled=true;
   const ex=$('dialog_extract_mode').value, ap=$('dialog_approval_mode').value;
-  $('glossary_dialog_status').textContent=ex==='ai_extract'||ap==='ai_approve'?'正在扫描并调用 AI 提取/审批术语（可能消耗较多 Token）…':'正在扫描英文词云…';
+  $('glossary_dialog_status').textContent=ex==='ai_extract'||ap==='ai_approve'?window.t('glossary.status_ai_scanning','正在扫描并调用 AI 提取/审批术语（可能消耗较多 Token）…'):window.t('glossary.status_scanning_cloud','正在扫描英文词云…');
   try{
     const body={id:selected,extract_mode:ex,approval_mode:ap};
     if(window.serverWorkshopLinks){body.api={base_url:$('base_url').value.trim(),model:$('model').value.trim(),api_key:$('api_key').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value)};}
@@ -688,7 +789,7 @@ $('scan_glossary_now').onclick=async()=>{
     currentGlossaryTerms=res.terms||[];
     $('glossary_extract_mode').value=ex;$('glossary_approval_mode').value=ap;$('workflow_mode').value='glossary';
     renderGlossaryDialog();
-    $('glossary_dialog_status').textContent=`扫描完成：共提取 ${currentGlossaryTerms.length} 条高频术语`;
+    $('glossary_dialog_status').textContent=window.t('glossary.status_scan_done','扫描完成：共提取 {count} 条高频术语',{count:currentGlossaryTerms.length});
     await refresh();
   }catch(e){$('glossary_dialog_status').textContent=e.message;}
   finally{$('scan_glossary_now').disabled=false;}
@@ -699,7 +800,7 @@ $('ai_approve_glossary_now').onclick=async()=>{
 };
 $('browser_scan_glossary_now').onclick=async()=>{
   if(!selected||!window.ParadoxBrowserEngine)return;
-  $('glossary_dialog_status').textContent='正在使用浏览器端 JS/TS 引擎本地计算词云（零服务器内存消耗）…';
+  $('glossary_dialog_status').textContent=window.t('glossary.status_browser_engine','正在使用浏览器端 JS/TS 引擎本地计算词云（零服务器内存消耗）…');
   try{
     const page=await api('entries',{id:selected,status:'all',query:'',page:1,page_size:200});
     const ex=$('dialog_extract_mode').value==='long_extract'?'long_extract':'short_keys';
@@ -707,7 +808,7 @@ $('browser_scan_glossary_now').onclick=async()=>{
     if(!terms.length&&(page.entries||[]).length){terms=window.ParadoxBrowserEngine.extractGlossaryCandidates(page.entries||[],{},ex,1,300);}
     currentGlossaryTerms=terms;
     renderGlossaryDialog();
-    $('glossary_dialog_status').textContent=`浏览器端引擎扫描完成：提取 ${terms.length} 条候选术语（未消耗服务器内存）`;
+    $('glossary_dialog_status').textContent=window.t('glossary.status_browser_engine_done','浏览器端引擎扫描完成：提取 {count} 条候选术语（未消耗服务器内存）',{count:terms.length});
   }catch(e){$('glossary_dialog_status').textContent=e.message;}
 };
 $('save_glossary_btn').onclick=async()=>{
@@ -717,7 +818,7 @@ $('save_glossary_btn').onclick=async()=>{
     $('workflow_mode').value='glossary';
     $('glossary_dialog').close();
     await refresh();
-    toast(`已保存术语表（共 ${currentGlossaryTerms.length} 条）并开启术语表翻译模式`);
+    toast(window.t('glossary.saved_toast','已保存术语表（共 {count} 条）并开启术语表翻译模式',{count:currentGlossaryTerms.length}));
   }catch(e){toast(e.message);}
 };
 $('save_and_translate_glossary_btn').onclick=async()=>{
@@ -730,13 +831,26 @@ $('save_and_translate_glossary_btn').onclick=async()=>{
     $('translate').click();
   }catch(e){toast(e.message);}
 };
-$('translate').onclick=async()=>{if(window.startServerTranslation)return window.startServerTranslation();const mod=state.mods.find(m=>m.id===selected);if(!mod)return;const dialog=$('translate_confirmation');const useAICheckbox=$('translate_use_ai_checkbox');const providerSelect=$('translate_provider_select');const aiOptions=$('translate_ai_options');const modName=$('translate_mod_name');const note=$('translate_note');const details=$('translate_details');modName.textContent=`翻译「${mod.title}」`;useAICheckbox.checked=true;$('confirm_workflow_mode').value=$('workflow_mode').value||'fast';$('confirm_extract_mode').value=$('glossary_extract_mode').value||'short_keys';$('confirm_approval_mode').value=$('glossary_approval_mode').value||'manual';providerSelect.innerHTML='';if(state.profiles&&state.profiles.length>0){state.profiles.forEach(p=>{const opt=document.createElement('option');opt.value=p.name;opt.textContent=`${p.name} · ${p.model}${p.has_api_key?'':' · 未保存密钥'}`;providerSelect.appendChild(opt);});}else{const opt=document.createElement('option');opt.value='default';opt.textContent=state.config.provider||state.config.base_url||'当前配置';providerSelect.appendChild(opt);}function updateDialog(){const useAI=useAICheckbox.checked;const wf=$('confirm_workflow_mode').value;const ex=$('confirm_extract_mode').value;const ap=$('confirm_approval_mode').value;aiOptions.hidden=!useAI;$('translate_workflow_box').hidden=!useAI;$('confirm_glossary_sub').hidden=!useAI||wf!=='glossary';const tokenWarn=(wf==='glossary'&&(ex==='ai_extract'||ap==='ai_approve'))?'\n注意：当前所选 AI 提取/自动审批术语表会额外消耗较多 Token。':'';if(state.demo){note.textContent='演示模式：使用固定示例译文，不访问任何外部接口';details.textContent=`${mod.cache_selection?.enabled===false?'缓存复用已关闭，其余条目重新生成。':'自动整合所选匹配缓存。'}\n翻译模式：${wf==='glossary'?'术语表模式（'+ex+'）':'快速模式（无术语表）'}\n完成后备份并回写：${mod.path}`;}else if(useAI){note.textContent=wf==='glossary'?'术语表模式：按高频术语表统一全 Mod 译名':'快速模式：无术语表，节省 Token 消耗';details.textContent=`英文文本会发往 ${state.config.base_url}，可能产生费用${tokenWarn}\n完成后备份并回写（报错行保留英文）：${mod.path}`;}else{note.textContent='不勾选时，只导入缓存';details.textContent=`仅导入缓存和本机已有中文\n不调用任何 API，缺失条目保留英文\n完成后备份并回写：${mod.path}`;}}useAICheckbox.onchange=updateDialog;$('confirm_workflow_mode').onchange=updateDialog;$('confirm_extract_mode').onchange=updateDialog;$('confirm_approval_mode').onchange=updateDialog;$('confirm_open_glossary_btn').onclick=()=>{dialog.close();openGlossaryDialog();};updateDialog();$('cancel_translate_action').onclick=()=>dialog.close();$('confirm_translate_action').onclick=async()=>{const useAI=useAICheckbox.checked;const wf=$('confirm_workflow_mode').value;const ex=$('confirm_extract_mode').value;const ap=$('confirm_approval_mode').value;dialog.close();try{if(useAI){await api('translate',{id:selected,use_ai:true,workflow_mode:wf,extract_mode:ex,approval_mode:ap});}else{await api('apply_cache_only',{id:selected});}await refresh();}catch(e){toast(e.message);}};dialog.oncancel=()=>{};dialog.showModal();};
+$('translate').onclick=async()=>{if(window.startServerTranslation)return window.startServerTranslation();const mod=state.mods.find(m=>m.id===selected);if(!mod)return;const dialog=$('translate_confirmation');const useAICheckbox=$('translate_use_ai_checkbox');const providerSelect=$('translate_provider_select');const aiOptions=$('translate_ai_options');const modName=$('translate_mod_name');const note=$('translate_note');const details=$('translate_details');modName.textContent=window.t('dialog.translate_mod_title','翻译「{title}」',{title:mod.title});useAICheckbox.checked=true;$('confirm_workflow_mode').value=$('workflow_mode').value||'fast';$('confirm_extract_mode').value=$('glossary_extract_mode').value||'short_keys';$('confirm_approval_mode').value=$('glossary_approval_mode').value||'manual';providerSelect.innerHTML='';if(state.profiles&&state.profiles.length>0){state.profiles.forEach(p=>{const opt=document.createElement('option');opt.value=p.name;opt.textContent=`${p.name} · ${p.model}${p.has_api_key?'':' · '+window.t('settings.api_key_unset','未保存密钥')}`;providerSelect.appendChild(opt);});}else{const opt=document.createElement('option');opt.value='default';opt.textContent=state.config.provider||state.config.base_url||window.t('settings.profile_default','当前配置');providerSelect.appendChild(opt);}function updateDialog(){const useAI=useAICheckbox.checked;const wf=$('confirm_workflow_mode').value;const ex=$('confirm_extract_mode').value;const ap=$('confirm_approval_mode').value;aiOptions.hidden=!useAI;$('translate_workflow_box').hidden=!useAI;$('confirm_glossary_sub').hidden=!useAI||wf!=='glossary';const tokenWarn=(wf==='glossary'&&(ex==='ai_extract'||ap==='ai_approve'))?'\n'+window.t('dialog.glossary_token_warn','注意：当前所选 AI 提取/自动审批术语表会额外消耗较多 Token。'):'';if(state.demo){
+    note.textContent=window.t('dialog.demo_note','演示模式：使用固定示例译文，不访问任何外部接口');
+    details.textContent=`${mod.cache_selection?.enabled===false?window.t('dialog.cache_disabled_detail','缓存复用已关闭，其余条目重新生成。'):window.t('dialog.cache_enabled_detail','自动整合所选匹配缓存。')}
+${window.t('dialog.workflow_detail','翻译模式：{mode}',{mode:wf==='glossary'?window.t('dialog.mode_glossary','术语表模式（{extract}）',{extract:ex}):window.t('dialog.mode_fast','快速模式（无术语表）')})}
+${window.t('dialog.backup_writeback','完成后备份并回写：{path}',{path:mod.path})}`;
+  }else if(useAI){
+    note.textContent=wf==='glossary'?window.t('dialog.glossary_mode_note','术语表模式：按高频术语表统一全 Mod 译名'):window.t('dialog.fast_mode_note','快速模式：无术语表，节省 Token 消耗');
+    details.textContent=`${window.t('dialog.ai_url_warn','英文文本会发往 {url}，可能产生费用',{url:state.config.base_url})}${tokenWarn}
+${window.t('dialog.backup_writeback_with_error','完成后备份并回写（报错行保留英文）：{path}',{path:mod.path})}`;
+  }else{
+    note.textContent=window.t('dialog.cache_only_note','不勾选时，只导入缓存');
+    details.textContent=`${window.t('dialog.cache_only_detail','仅导入缓存和本机已有中文\\n不调用任何 API，缺失条目保留英文')}
+${window.t('dialog.backup_writeback','完成后备份并回写：{path}',{path:mod.path})}`;
+  }}useAICheckbox.onchange=updateDialog;$('confirm_workflow_mode').onchange=updateDialog;$('confirm_extract_mode').onchange=updateDialog;$('confirm_approval_mode').onchange=updateDialog;$('confirm_open_glossary_btn').onclick=()=>{dialog.close();openGlossaryDialog();};updateDialog();$('cancel_translate_action').onclick=()=>dialog.close();$('confirm_translate_action').onclick=async()=>{const useAI=useAICheckbox.checked;const wf=$('confirm_workflow_mode').value;const ex=$('confirm_extract_mode').value;const ap=$('confirm_approval_mode').value;dialog.close();try{if(useAI){await api('translate',{id:selected,use_ai:true,workflow_mode:wf,extract_mode:ex,approval_mode:ap});}else{await api('apply_cache_only',{id:selected});}await refresh();}catch(e){toast(e.message);}};dialog.oncancel=()=>{};dialog.showModal();};
 
 $('analyze').onclick=async()=>{try{await api('analyze',{id:selected});await refresh();}catch(e){toast(e.message);}};
 async function changeCache(){if(!selected)return;try{await api('cache-selection',{id:selected,enabled:$('use_cache').checked,version_id:$('cache_version').value?Number($('cache_version').value):null});await refresh();}catch(e){toast(e.message);renderSelection();}}
 $('use_cache').onchange=()=>{$('cache_details').hidden=!$('use_cache').checked;changeCache();};
 $('cache_version').onchange=changeCache;
-$('clear_translations').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(`清除「${mod.title}」本机目录中的中文翻译文件？\n${mod.path}\n清除前会自动备份现有中文文件，清除后自动重新扫描该 Mod（SQLite 翻译缓存仍保留）。`,'确认清除'))return;try{await api('clear-translations',{id:selected});await refresh();}catch(e){toast(e.message);}};
+$('clear_translations').onclick=async()=>{const mod=state.mods.find(m=>m.id===selected);if(!mod)return;if(!await ask(window.t('dialog.confirm_clear_msg','清除「{title}」本机目录中的中文翻译文件？\n{path}\n清除前会自动备份现有中文文件，清除后自动重新扫描该 Mod（SQLite 翻译缓存仍保留）。',{title:mod.title,path:mod.path}),window.t('dialog.confirm_clear_btn','确认清除')))return;try{await api('clear-translations',{id:selected});await refresh();}catch(e){toast(e.message);}};
 
 function openImportStep1(){
   if(!selected)return;
@@ -745,7 +859,7 @@ function openImportStep1(){
 }
 function openImportStep2(path){
   const trimmed=(path??$('import_path').value).trim();
-  if(!trimmed){toast('请先选择文件或文件夹，或输入本机路径');return;}
+  if(!trimmed){toast(window.t('toast.pick_file_or_folder','请先选择文件或文件夹，或输入本机路径'));return;}
   $('import_path').value=trimmed;
   $('import_selected_path').textContent=trimmed;
   if($('import_step1_dialog').open)$('import_step1_dialog').close();
@@ -763,15 +877,15 @@ async function pick(kind){
   if(pickingImport)return;
   pickingImport=true;
   for(const id of ['pick_file','pick_folder','import_next_step','import_cache'])$(id).disabled=true;
-  $('picker_status').textContent='正在打开系统选择器…';
+  $('picker_status').textContent=window.t('picker.opening','正在打开系统选择器…');
   try{
     const result=await api('pick',{kind});
     if(result.path){
       $('import_path').value=result.path;
-      $('picker_status').textContent='已选择，正在进入确认与署名步骤…';
+      $('picker_status').textContent=window.t('picker.selected','已选择，正在进入确认与署名步骤…');
       openImportStep2(result.path);
     }else{
-      $('picker_status').textContent='已取消选择。';
+      $('picker_status').textContent=window.t('picker.canceled','已取消选择。');
     }
   }catch(e){
     $('picker_status').textContent=e.message;
@@ -786,35 +900,35 @@ $('pick_folder').onclick=()=>pick('folder');
 $('import_cache').onclick=async()=>{
   if(!selected)return;
   const path=$('import_path').value.trim();
-  if(!path){toast('请先选择文件或文件夹');return;}
+  if(!path){toast(window.t('toast.select_file_or_folder','请先选择文件或文件夹'));return;}
   const provider=$('import_provider').value.trim();
   const extractGlossaryAi=Boolean($('import_extract_glossary_ai')?.checked);
   $('import_step2_dialog').close();
   try{
     await api('import',{id:selected,path,provider,extract_glossary_ai:extractGlossaryAi});
     await refresh();
-    toast(`导入任务已启动（来源：${provider||'自动命名'}）。导出包将自动提取术语表${extractGlossaryAi?'；纯 YML 已开启 AI 提取高频中文术语':''}。`);
+    toast(window.t('toast.import_started','导入任务已启动（来源：{provider}）。导出包将自动提取术语表{extra}。',{provider:provider||window.t('toast.auto_named','自动命名'),extra:extractGlossaryAi?window.t('toast.import_ai_glossary_extra','；纯 YML 已开启 AI 提取高频中文术语'):''}));
   }catch(e){toast(e.message);}
 };
 
 let modExportId=null, pendingModExport=null, generatedModId=null;
 function syncModExport(){
   const job=modJob(pendingModExport);if(!pendingModExport||job.kind!=='generate-mod')return;
-  if(job.running){$('mod_export_status').textContent='正在扫描译文并生成翻译 Mod…';return;}
+  if(job.running){$('mod_export_status').textContent=window.t('mod_export.generating_status','正在扫描译文并生成翻译 Mod…');return;}
   const id=pendingModExport;pendingModExport=null;
   if(job.error){$('mod_export_status').textContent=job.error;return;}
   const result=job.result;if(!result)return;
   generatedModId=id;$('mod_export_intro').value=result.description;
-  $('mod_export_status').textContent=`已生成 ${result.entries} 条译文（本地文件夹：${result.folder_name||''}）。简介来源：${result.description_source}\n${result.path}`+(result.warnings.length?'\n'+result.warnings.join('\n'):'');
+  $('mod_export_status').textContent=window.t('mod_export.generated_status','已生成 {entries} 条译文（本地文件夹：{folder}）。简介来源：{source}\n{path}',{entries:result.entries,folder:result.folder_name||'',source:result.description_source,path:result.path})+(result.warnings.length?'\n'+result.warnings.join('\n'):'');
   $('download_mod_export').disabled=false;$('open_mod_export').disabled=false;
 }
 $('generate_mod').onclick=()=>{
   const mod=state.mods.find(m=>m.id===selected);if(!mod)return;
-  if(modExportId!==selected){$('mod_export_intro').value='';$('mod_export_name').value=mod.title.slice(0,140)+' · 简体中文翻译';}
+  if(modExportId!==selected){$('mod_export_intro').value='';$('mod_export_name').value=mod.title.slice(0,140)+' · '+window.t('mod_export.default_title_suffix','简体中文翻译');}
   modExportId=selected;generatedModId=null;
-  $('mod_export_status').textContent='将根据现有中文与哈希缓存生成独立补丁，不调用 AI 翻译正文。';
+  $('mod_export_status').textContent=window.t('mod_export.generate_note','将根据现有中文与哈希缓存生成独立补丁，不调用 AI 翻译正文。');
   $('download_mod_export').disabled=true;$('open_mod_export').disabled=true;
-  $('mod_export_api_note').textContent=state.demo?'演示模式：简介使用固定模板，不调用付费接口。':`简介留空时使用当前默认配置：${state.config.provider||'默认提供商'} / ${state.config.model}。仅发送游戏、Mod 名称、链接和条目数量，可能产生费用。填写简介则不请求 API。`;
+  $('mod_export_api_note').textContent=state.demo?window.t('mod_export.demo_intro_note','演示模式：简介使用固定模板，不调用付费接口。'):window.t('mod_export.api_intro_note','简介留空时使用当前默认配置：{provider} / {model}。仅发送游戏、Mod 名称、链接和条目数量，可能产生费用。填写简介则不请求 API。',{provider:state.config.provider||window.t('settings.profile_default','默认提供商'),model:state.config.model});
   $('mod_export_dialog').showModal();
 };
 $('close_mod_export').onclick=()=>$('mod_export_dialog').close();
@@ -828,7 +942,7 @@ $('confirm_mod_export').onclick=async()=>{
 $('open_mod_export').onclick=async()=>{try{await api('open-generated-mod',{id:generatedModId});}catch(e){$('mod_export_status').textContent=e.message;}};
 $('download_mod_export').onclick=async()=>{
   try{const r=await fetch('/api/download-mod',{method:'POST',headers:{'X-App-Token':token,'Content-Type':'application/json'},body:JSON.stringify({id:generatedModId})});
-    if(!r.ok)throw Error((await r.json()).error||'下载失败');
+    if(!r.ok)throw Error((await r.json()).error||window.t('toast.download_failed','下载失败'));
     const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='translation-mod-'+generatedModId.replace(':','-')+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){$('mod_export_status').textContent=e.message;}
 };
@@ -842,8 +956,8 @@ $('export_btn').onclick=async()=>{
       body:JSON.stringify({id:selected,format:'zip'})
     });
     if(!r.ok){
-      const err=await r.json().catch(()=>({error:'导出失败'}));
-      throw Error(err.error||'导出失败');
+      const err=await r.json().catch(()=>({error:window.t('toast.export_failed','导出失败')}));
+      throw Error(err.error||window.t('toast.export_failed','导出失败'));
     }
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
@@ -852,12 +966,77 @@ $('export_btn').onclick=async()=>{
     link.download=selected.replace(':','-')+'-chinese-hash.zip';
     link.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
-    toast('已导出 ZIP 压缩包（含中文 YML 目录树与 .cache.json 哈希文件）。');
+    toast(window.t('toast.exported_zip','已导出 ZIP 压缩包（含中文 YML 目录树与 .cache.json 哈希文件）。'));
   }catch(e){toast(e.message);}
 };
 
 $('open').onclick=async()=>{try{await api('open',{id:selected});}catch(e){toast(e.message);}};
 $('search').oninput=()=>state&&renderMods();
+
+$('lang_add_btn').onclick=(e)=>{
+  e.stopPropagation();
+  const menu=$('lang_add_menu');
+  menu.hidden=!menu.hidden;
+  $('lang_add_btn').setAttribute('aria-expanded',String(!menu.hidden));
+};
+document.addEventListener('click',(e)=>{
+  const menu=$('lang_add_menu');
+  if(menu&&!menu.hidden&&!menu.contains(e.target)&&e.target!==$('lang_add_btn')){
+    menu.hidden=true;
+    $('lang_add_btn').setAttribute('aria-expanded','false');
+  }
+});
+$('opt_custom_token').onclick=()=>{
+  $('lang_add_menu').hidden=true;
+  $('lang_add_btn').setAttribute('aria-expanded','false');
+  const d=$('custom_lang_dialog');
+  $('custom_lang_status').hidden=true;
+  $('submit_custom_lang').disabled=false;
+  if(state&&state.config){
+    $('custom_lang_url').value=state.config.base_url||'';
+    $('custom_lang_model').value=state.config.model||'';
+  }
+  if(typeof d.showModal==='function')d.showModal();else d.hidden=false;
+};
+$('close_custom_lang').onclick=$('cancel_custom_lang').onclick=()=>{
+  const d=$('custom_lang_dialog');
+  if(typeof d.close==='function')d.close();else d.hidden=true;
+};
+$('custom_lang_form').onsubmit=async(e)=>{
+  e.preventDefault();
+  const code=$('custom_lang_code').value.trim().toLowerCase();
+  const name=$('custom_lang_name').value.trim();
+  const apiKey=$('custom_lang_key').value.trim();
+  const baseUrl=$('custom_lang_url').value.trim();
+  const model=$('custom_lang_model').value.trim();
+  if(!code||!name)return;
+  const statusEl=$('custom_lang_status');
+  statusEl.hidden=false;
+  statusEl.textContent=window.t('custom_lang.translating_status','正在调用 AI 翻译界面文本，请稍候（通常需要约 10-30 秒）…');
+  $('submit_custom_lang').disabled=true;
+  try{
+    const res=await api('translate-ui',{code,name,api_key:apiKey,base_url:baseUrl,model});
+    statusEl.textContent=window.t('custom_lang.success_status','生成成功！已翻译 {count} 个界面词条。正在切换语言…',{count:res.count});
+    let opt=document.querySelector(`#workshop_language option[value="${code}"]`);
+    if(!opt){
+      opt=document.createElement('option');
+      opt.value=code;
+      opt.textContent=name;
+      $('workshop_language').appendChild(opt);
+    }
+    $('workshop_language').value=code;
+    window.workshopLanguage=code;
+    try{localStorage.setItem('workshop_language',code);}catch(_){}
+    setTimeout(()=>{
+      if(typeof $('custom_lang_dialog').close==='function')$('custom_lang_dialog').close();
+      location.reload();
+    },800);
+  }catch(err){
+    statusEl.textContent=window.t('custom_lang.failed_status','生成失败: {error}',{error:err.message});
+    $('submit_custom_lang').disabled=false;
+  }
+};
+
 if(window.gsap&&window.ScrollTrigger&&!matchMedia('(prefers-reduced-motion: reduce)').matches){gsap.registerPlugin(ScrollTrigger);gsap.fromTo('h1',{y:8},{opacity:1,y:0,duration:.6});}
 refresh();setInterval(refresh,1800);if(window.syncTutorialVisibility)window.syncTutorialVisibility();
-</script><script src="/entry_browser_ui.js" onerror="document.getElementById('entry_note').textContent='条目浏览模块未加载。请关闭旧程序，重新运行当前文件夹的启动翻译程序.command。'"></script><script src="/tutorial_ui.js"></script></html>
+</script><script src="/entry_browser_ui.js" onerror="document.getElementById('entry_note').textContent=window.t?window.t('entry.module_load_error','条目浏览模块未加载。请关闭旧程序，重新运行启动脚本（Mac: setup_mac.command / Windows: start_windows.bat）。'):'条目浏览模块未加载。请关闭旧程序，重新运行启动脚本（Mac: setup_mac.command / Windows: start_windows.bat）。'"></script><script src="/tutorial_ui.js"></script></html>

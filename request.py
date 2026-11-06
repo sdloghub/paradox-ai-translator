@@ -44,7 +44,7 @@ def findrule(game, language=None):
         context = _RULES_CACHE.get('games', {}).get(game, {})
         common = _RULES_CACHE.get('languages', {}).get(language, {}).get('common', _RULES_CACHE['common'])
         guidance = _RULES_CACHE.get('languages', {}).get(language, {}).get('games', {}).get(game, context.get('guidance', ''))
-        return (common + {'zh-CN':'\n\n当前游戏：', 'zh-TW':'\n\n目前遊戲：', 'ru':'\n\nИгра: ', 'ko':'\n\n게임: ', 'ja':'\n\nゲーム：'}[language] + context.get('name', game)
+        return (common + {'zh-CN':'\n\n当前游戏：', 'zh-TW':'\n\n目前遊戲：', 'ru':'\n\nИгра: ', 'ko':'\n\n게임: ', 'ja':'\n\nゲーム：', 'en':'\n\nCurrent game: '}.get(language, '\n\nCurrent game: ') + context.get('name', game)
                 + '\n' + guidance)
     return _RULES_CACHE[game]
 #print(findrule("st"))
@@ -115,7 +115,8 @@ def is_token_only(text):
 
 def target_pattern(language):
     return {'ru': r'[\u0400-\u052f]', 'ko': r'[\uac00-\ud7af\u1100-\u11ff]',
-            'ja': r'[\u3040-\u30ff\u3400-\u9fff]'}.get(language, r'[\u3400-\u9fff]')
+            'ja': r'[\u3040-\u30ff\u3400-\u9fff]',
+            'en': r'[a-zA-Z]'}.get(language, r'[\u3400-\u9fff]')
 
 def valid_translation(original, translated, language=None):
     from localization import current_language

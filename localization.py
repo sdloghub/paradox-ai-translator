@@ -8,6 +8,7 @@ import threading
 
 LANGUAGES = {
     'zh-CN': {'name': '简体中文', 'slot': 'simp_chinese'},
+    'en': {'name': 'English', 'slot': 'english'},
     # Paradox has no Traditional Chinese slot; use its Chinese language slot.
     'zh-TW': {'name': '繁體中文', 'slot': 'simp_chinese'},
     'ru': {'name': 'Русский', 'slot': 'russian'},
@@ -17,7 +18,26 @@ LANGUAGES = {
 _language = ContextVar('translation_language', default='zh-CN')
 
 
+def load_saved_languages():
+    try:
+        catalog_path = Path(__file__).resolve().parent / 'ui_languages.json'
+        if catalog_path.is_file():
+            import json
+            catalogs = json.loads(catalog_path.read_text(encoding='utf-8'))
+            for code, cat in catalogs.items():
+                if code not in LANGUAGES and isinstance(cat, dict):
+                    name = cat.get('__lang_name__', code.upper())
+                    LANGUAGES[code] = {'name': name, 'slot': code}
+    except Exception:
+        pass
+
+
+load_saved_languages()
+
+
 def normalize(language):
+    if language not in LANGUAGES:
+        load_saved_languages()
     if language not in LANGUAGES:
         raise ValueError('Unsupported language / 不支持的语言')
     return language

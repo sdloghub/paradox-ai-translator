@@ -708,5 +708,64 @@ class WorkshopTests(unittest.TestCase):
         self.assertIn('--ai-bg:', html)
         self.assertIn('--scan-bg:', html)
 
+    def test_local_mod_scanning_and_fast_localisation_discovery(self):
+        # Setup Paradox Interactive Documents folder for Stellaris (281990)
+        docs_dir = self.base / 'CustomDocs'
+        st_mod_dir = docs_dir / 'Paradox Interactive/Stellaris/mod'
+        st_mod_dir.mkdir(parents=True)
+        self.service.documents_dir = docs_dir
+
+        # 1. Local mod with path attribute: mod/my_mod_path
+        mod1_target = st_mod_dir / 'my_mod_folder'
+        (mod1_target / 'localisation/english').mkdir(parents=True)
+        (mod1_target / 'localisation/english/test1_l_english.yml').write_text('l_english:\n test_key1:0 "Local One"\n', encoding='utf-8')
+        (mod1_target / 'descriptor.mod').write_text('name="My Path Mod"\n', encoding='utf-8')
+        (st_mod_dir / 'my_path_mod.mod').write_text('name="My Path Mod"\npath="mod/my_mod_folder"\n', encoding='utf-8')
+
+        # 2. Local mod without path attribute (in same folder matching stem)
+        mod2_target = st_mod_dir / 'no_path_mod'
+        (mod2_target / 'localization/english').mkdir(parents=True)
+        (mod2_target / 'localization/english/test2_l_english.yml').write_text('l_english:\n test_key2:0 "Local Two"\n', encoding='utf-8')
+        (mod2_target / 'descriptor.mod').write_text('name="No Path Mod"\n', encoding='utf-8')
+        (st_mod_dir / 'no_path_mod.mod').write_text('name="No Path Mod"\n', encoding='utf-8')
+
+        # 3. Direct subfolder with descriptor.mod but no .mod file
+        mod3_target = st_mod_dir / 'direct_folder_mod'
+        (mod3_target / 'localisation/english').mkdir(parents=True)
+        (mod3_target / 'localisation/english/test3_l_english.yml').write_text('l_english:\n test_key3:0 "Direct Folder"\n', encoding='utf-8')
+        (mod3_target / 'descriptor.mod').write_text('name="Direct Folder Mod"\n', encoding='utf-8')
+
+        # Fast scan test: create thousands of dummy non-localisation files
+        (mod1_target / 'gfx/test').mkdir(parents=True)
+        (mod1_target / 'common/traits').mkdir(parents=True)
+        for i in range(100):
+            (mod1_target / f'gfx/test/dummy_{i}.dds').write_bytes(b'DDS')
+            (mod1_target / f'common/traits/dummy_{i}.txt').write_text('trait = {}')
+
+        # Verify find_localisation_files only finds the yml file inside localisation/
+        loc_files = app.find_localisation_files(mod1_target)
+        self.assertEqual(len(loc_files), 1)
+        self.assertTrue(loc_files[0].name.endswith('.yml'))
+
+        # Run scan and verify discovery
+        items = self.service.scan(lambda ids: {})
+        ids = {item['id']: item for item in items}
+
+        self.assertIn('281990:local_my_path_mod', ids)
+        self.assertEqual(ids['281990:local_my_path_mod']['title'], 'My Path Mod')
+        self.assertTrue(ids['281990:local_my_path_mod']['is_local'])
+        self.assertEqual(ids['281990:local_my_path_mod']['discovery_source'], 'Paradox 本地 Mod')
+
+        self.assertIn('281990:local_no_path_mod', ids)
+        self.assertEqual(ids['281990:local_no_path_mod']['title'], 'No Path Mod')
+
+        self.assertIn('281990:local_direct_folder_mod', ids)
+        self.assertEqual(ids['281990:local_direct_folder_mod']['title'], 'Direct Folder Mod')
+
+        # Verify analysis works on local mod
+        counts = self.service.analyze('281990:local_my_path_mod')
+        self.assertEqual(counts['total'], 1)
+        self.assertEqual(counts['untranslated'], 1)
+
 if __name__ == '__main__':
     unittest.main()

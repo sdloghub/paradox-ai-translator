@@ -8,7 +8,7 @@
 
 A workshop-aware translation workbench for five Paradox games that keeps variables, colours and formatting intact, and reuses a translation only when the English source hash still matches.
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md)
+[English](README.md) · [Documentation (综合说明)](introduction.md) · [Tutorials (新手教程)](tutorials/)
 
 <sub>Missing your language? [Add it!](https://github.com/sdloghub/paradox-ai-translator/issues/new)</sub>
 
@@ -30,25 +30,27 @@ Pick a subscribed Workshop Mod, let the tool find the English localisation, tran
 
 ### Web
 
-Open **https://paradox-ai-translator.com/** , paste a Workshop link, scan, fill in your API details for this task, translate, then download the result. There is no sign-up. The site keeps no API key — see the [deployment notes](服务器部署说明.md) for what the server does and does not store.
+Open **https://paradox-ai-translator.com/** , paste a Workshop link, scan, fill in your API details for this task, translate, then download the result. There is no sign-up. The site keeps no API key — see the [deployment notes](introduction.md#3-服务器端-web-版本-部署与运维指南) for what the server does and does not store.
 
 ### Desktop (macOS)
 
-Download `WorkshopTranslator-macOS-arm64.zip` from [Releases](https://github.com/sdloghub/paradox-ai-translator/releases), unzip, double-click `WorkshopTranslator.app`. Apple Silicon, no separate Python install. The build is not Developer-ID signed, so allow it once in *System Settings → Privacy & Security*.
+- **Release package**: Download WorkshopTranslator-macOS-arm64.zip from [Releases](https://github.com/sdloghub/paradox-ai-translator/releases), unzip, double-click WorkshopTranslator.app. Apple Silicon, no separate Python install. The build is not Developer-ID signed, so allow it once in *System Settings → Privacy & Security*.
+- **From source**: Double-click setup_mac.command (or run ./setup_mac.command in terminal).
 
 ### Desktop (Windows)
 
-Download and unzip the release archive, then run `WorkshopTranslator.exe` (Windows 10/11 x64). Keep the `_internal` folder next to the executable. Data lives in `%LOCALAPPDATA%\WorkshopTranslator\app_data`.
+- **Release package**: Download and unzip the release archive, then run WorkshopTranslator.exe (Windows 10/11 x64). Keep the _internal folder next to the executable. Data lives in %LOCALAPPDATA%\WorkshopTranslator\app_data.
+- **From source**: Double-click start_windows.bat (or run start_windows.bat in command prompt).
 
-### From source
+### From source (Cross-platform CLI)
 
-```sh
+`sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python workshop_app.py
-```
+`
 
-Offline demo, no paid API calls: `.venv/bin/python workshop_app.py --demo`.
+Offline demo, no paid API calls: python workshop_app.py --demo (or start_windows.bat --demo).
 
 ## How a translation runs
 
@@ -104,12 +106,13 @@ Tests use fake providers; no real API is called. Release builds run the same sui
 
 | Document | Contents |
 | --- | --- |
-| [新手教程.md](新手教程.md) | Step-by-step first run |
-| [Mac使用说明.md](Mac使用说明.md) | macOS package and rebuild |
-| [Windows使用说明.md](Windows使用说明.md) | Windows package and rebuild |
-| [服务器部署说明.md](服务器部署说明.md) | Self-hosting the web version |
+| [introduction.md](introduction.md) | Comprehensive documentation: macOS, Windows, and Server deployment |
+| [tutorials/beginner_tutorial.md](tutorials/beginner_tutorial.md) | Step-by-step beginner walkthrough |
+| [tutorials/](tutorials/) | Tutorials and guides directory |
+| setup_mac.command | One-click startup script for macOS |
+| start_windows.bat | One-click startup script for Windows |
 
-The interface and user documentation are in Chinese; the README is available in English, Simplified Chinese and Traditional Chinese as listed at the top.
+The interface and user documentation are organized in [introduction.md](introduction.md) and [tutorials/](tutorials/).
 
 ## Repo layout
 

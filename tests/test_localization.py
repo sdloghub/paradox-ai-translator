@@ -107,14 +107,18 @@ class LanguageTests(unittest.TestCase):
             self.assertIn('русский', request.findrule(game, 'ru'))
             self.assertIn('繁體中文', request.findrule(game, 'zh-TW'))
         with self.assertRaises(ValueError):
-            request.findrule('st', 'en')
+            request.findrule('st', 'de')
 
     def test_shared_records_are_partitioned_by_language(self):
         ru = localization.workspace(self.base, 'ru')
         ru.server_root = self.base
-        with public_database(self.base) as db:
-            db.execute('INSERT INTO contributions VALUES (1,?,?,?,?,?,?,?,?,?)',
-                       (self.identifier, 'test', 'author', 'model', 0, 'now', 'test', 1, b'zip'))
+        db = public_database(self.base)
+        try:
+            with db:
+                db.execute('INSERT INTO contributions VALUES (1,?,?,?,?,?,?,?,?,?)',
+                           (self.identifier, 'test', 'author', 'model', 0, 'now', 'test', 1, b'zip'))
+        finally:
+            db.close()
         self.assertEqual(len(contributions(self.base)), 1)
         self.assertEqual(contributions(ru), [])
 
@@ -122,7 +126,7 @@ class LanguageTests(unittest.TestCase):
         root = Path(app.__file__).parent
         catalogs = json.loads((root / 'ui_languages.json').read_text())
         self.assertEqual(set(catalogs), set(localization.LANGUAGES))
-        for language in ('ru', 'zh-TW', 'ko', 'ja'):
+        for language in ('ru', 'zh-TW', 'ko', 'ja', 'en'):
             self.assertTrue(all(catalogs[language].get(text) for text in
                 ('开始 AI 翻译', '扫描此 Mod', '导入译文', '生成翻译 Mod', 'API 与 Steam 库设置', '下一页')))
         for filename in ('packaging/WorkshopTranslator.spec', 'packaging/WorkshopTranslator-macOS.spec',
@@ -136,7 +140,7 @@ class LanguageTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
-        for language, expected in [('ru', 200), ('zh-TW', 200), ('zh-CN', 200), ('ko', 200), ('ja', 200), ('en', 400)]:
+        for language, expected in [('ru', 200), ('zh-TW', 200), ('zh-CN', 200), ('ko', 200), ('ja', 200), ('en', 200), ('de', 400)]:
             connection = http.client.HTTPConnection(*server.server_address)
             connection.request('GET', '/api/state', headers={
                 'X-App-Token': server.token, 'X-Translation-Language': language})
@@ -147,3 +151,34 @@ class LanguageTests(unittest.TestCase):
                 self.assertEqual(payload['target_language'], language)
                 self.assertNotIn('api_key', payload['config'])
             connection.close()
+
+    def test_translate_ui_creates_new_language_and_registers_in_runtime(self):
+        catalog_path = Path(app.__file__).parent / 'ui_languages.json'
+        backup = catalog_path.read_text(encoding='utf-8')
+        def restore():
+            catalog_path.write_text(backup, encoding='utf-8')
+            localization.LANGUAGES.pop('fr', None)
+        self.addCleanup(restore)
+        server = app.AppServer(('127.0.0.1', 0), self.base)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        connection = http.client.HTTPConnection(*server.server_address)
+        payload = json.dumps({'code': 'fr', 'name': 'Français', 'api_key': 'test-key'})
+        connection.request('POST', '/api/translate-ui', body=payload, headers={
+            'X-App-Token': server.token,
+            'Content-Type': 'application/json'
+        })
+        response = connection.getresponse()
+        data = json.loads(response.read())
+        connection.close()
+        self.assertEqual(response.status, 200)
+        self.assertTrue(data.get('ok'))
+        self.assertEqual(data.get('code'), 'fr')
+        self.assertIn('fr', localization.LANGUAGES)
+        connection = http.client.HTTPConnection(*server.server_address)
+        connection.request('GET', '/api/state', headers={
+            'X-App-Token': server.token, 'X-Translation-Language': 'fr'})
+        response = connection.getresponse()
+        self.assertEqual(response.status, 200)
+        connection.close()

@@ -176,7 +176,10 @@ class EntryBrowserTests(unittest.TestCase):
         original = self.source.read_bytes()
         outside.write_bytes(original)
         self.source.unlink()
-        self.source.symlink_to(outside)
+        try:
+            self.source.symlink_to(outside)
+        except OSError:
+            self.skipTest('Symlinks require privileges on Windows')
         with self.assertRaisesRegex(ValueError, '符号链接'):
             self.service.edit_entry(self.identifier, row['entry_id'], ' malformed:0 "Fixed"')
         self.assertEqual(outside.read_bytes(), original)

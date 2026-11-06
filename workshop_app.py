@@ -69,6 +69,24 @@ def open_folder(path):
 GAMES = {'281990': ('st', '群星'), '394360': ('hoi4', '钢铁雄心4'),
          '236850': ('eu4', '欧陆风云4'), '1158310': ('ck3', '十字军之王3'),
          '529340': ('vic3', '维多利亚3')}
+PARADOX_GAME_FOLDERS = {
+    '281990': ('st', '群星', 'Stellaris'),
+    '394360': ('hoi4', '钢铁雄心4', 'Hearts of Iron IV'),
+    '236850': ('eu4', '欧陆风云4', 'Europa Universalis IV'),
+    '1158310': ('ck3', '十字军之王3', 'Crusader Kings III'),
+    '529340': ('vic3', '维多利亚3', 'Victoria 3')
+}
+
+
+def localized_game_title(appid, lang=None):
+    from localization import current_language
+    language = lang or current_language()
+    item = PARADOX_GAME_FOLDERS.get(str(appid))
+    if not item:
+        return GAMES.get(str(appid), ('', 'Paradox Game'))[1]
+    if language == 'en':
+        return item[2]
+    return item[1]
 DEFAULT_CONFIG = {'api_format': 'openai', 'provider': '', 'config_name': '', 'base_url': 'https://api.openai.com/v1',
                   'api_key': '', 'model': 'gpt-4.1-mini', 'batch_size': 10,
                   'concurrency': 3, 'steam_libraries': [], 'aggregate_export': True, 'developer_mode': True}
@@ -82,9 +100,16 @@ def atomic_bytes(path, data, private=False):
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
             name = Path(stream.name)
             stream.write(data)
-        if private:
+        if private and os.name != 'nt':
             name.chmod(0o600)
-        os.replace(name, path)
+        for attempt in range(15):
+            try:
+                os.replace(name, path)
+                break
+            except PermissionError:
+                if attempt == 14:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
     finally:
         if name is not None:
             name.unlink(missing_ok=True)
@@ -162,26 +187,96 @@ def local_title(path, uid):
     return f'Mod {uid}'
 
 
-def english_files(mod_path):
-    files = {}
+def find_localisation_files(mod_path, extensions=('.yml', '.yaml')):
+    """Fastest non-recursive scan on Windows and POSIX that ONLY enters localisation/ directories."""
+    mod_path = Path(mod_path)
+    try:
+        mod_resolved = mod_path.resolve()
+    except OSError:
+        mod_resolved = mod_path
+    found = []
     for folder_name in ('localisation', 'localization'):
         folder = mod_path / folder_name
-        if not folder.is_dir():
+        if not folder.is_dir() or folder.is_symlink():
             continue
-        for path in sorted(folder.rglob('*.yml')):
-            if path.is_symlink() or not path.resolve().is_relative_to(mod_path.resolve()):
+        stack = [str(folder)]
+        while stack:
+            curr = stack.pop()
+            try:
+                with os.scandir(curr) as entries:
+                    for entry in entries:
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                stack.append(entry.path)
+                            elif entry.is_file(follow_symlinks=False):
+                                name = entry.name.lower()
+                                if any(name.endswith(ext) for ext in extensions):
+                                    p = Path(entry.path)
+                                    try:
+                                        if p.resolve().is_relative_to(mod_resolved):
+                                            found.append(p)
+                                    except (OSError, ValueError):
+                                        pass
+                        except OSError:
+                            continue
+            except OSError:
                 continue
+    found.sort()
+    return found
+
+
+def paradox_document_roots(service):
+    roots = []
+    if getattr(service, 'documents_dir', None):
+        p = Path(service.documents_dir).resolve()
+        if p.is_dir() and p not in roots:
+            roots.append(p)
+    elif not getattr(service, 'demo', False) and getattr(service, 'data_dir', None) and service.data_dir in ((ROOT / 'app_data').resolve(), user_config_dir().resolve()):
+        if sys.platform == 'win32':
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders') as key:
+                    val, _ = winreg.QueryValueEx(key, 'Personal')
+                    p = Path(os.path.expandvars(val)).resolve()
+                    if p.is_dir() and p not in roots:
+                        roots.append(p)
+            except Exception:
+                pass
+        home_docs = (Path.home() / 'Documents').resolve()
+        if home_docs.is_dir() and home_docs not in roots:
+            roots.append(home_docs)
+        onedrive_docs = (Path.home() / 'OneDrive' / 'Documents').resolve()
+        if onedrive_docs.is_dir() and onedrive_docs not in roots:
+            roots.append(onedrive_docs)
+        local_share = (Path.home() / '.local' / 'share').resolve()
+        if local_share.is_dir() and local_share not in roots:
+            roots.append(local_share)
+    elif getattr(service, 'data_dir', None):
+        docs = (service.data_dir / 'Documents').resolve()
+        if docs.is_dir():
+            roots.append(docs)
+    return roots
+
+
+def english_files(mod_path):
+    files = {}
+    for path in find_localisation_files(mod_path):
+        if path.is_symlink() or not path.resolve().is_relative_to(Path(mod_path).resolve()):
+            continue
+        try:
             data = path.read_bytes()
             text = data.decode('utf-8-sig')
-            if re.search(r'^\s*l_english\s*:', text, re.M):
-                files[path.relative_to(mod_path).as_posix()] = data
+        except (UnicodeDecodeError, OSError):
+            continue
+        if re.search(r'^\s*l_english\s*:', text, re.M):
+            files[path.relative_to(mod_path).as_posix()] = data
     return files
 
 
 def target_path(name, game):
     from localization import slot
     target_slot = slot()
-    path = PurePosixPath(name)
+    path = PurePosixPath(str(name).replace('\\', '/'))
     if game == 'eu4':
         return path.as_posix()
     parts = [target_slot if part == 'english' else part for part in path.parts]
@@ -542,7 +637,8 @@ class WorkshopService:
             libraries = [self.data_dir / 'uploaded_library']
         for library in libraries:
             content = library / 'steamapps/workshop/content'
-            for appid, (game, game_title) in GAMES.items():
+            for appid, (game, _) in GAMES.items():
+                game_title = localized_game_title(appid, getattr(self, 'target_language', None))
                 folder = content / appid
                 if not folder.is_dir() or folder.is_symlink():
                     continue
@@ -566,7 +662,159 @@ class WorkshopService:
                                              'name_source': '本地描述文件', 'translated': False,
                                              'discovery_source': 'Steam ACF' if installed is not None else '目录回退',
                                              'workshop': record,
-                                             'steam_update_pending': workshop_update_pending(record)}
+                                             'steam_update_pending': workshop_update_pending(record),
+                                             'is_local': False}
+
+        # 扫描 Paradox Interactive 文档目录下的 mod
+        if not getattr(self, 'server_mode', False):
+            for doc_root in paradox_document_roots(self):
+                for appid, (game, _, pdx_folder) in PARADOX_GAME_FOLDERS.items():
+                    game_title = localized_game_title(appid, getattr(self, 'target_language', None))
+                    mod_dir = doc_root / 'Paradox Interactive' / pdx_folder / 'mod'
+                    if not mod_dir.is_dir():
+                        continue
+                    try:
+                        with os.scandir(str(mod_dir)) as it:
+                            mod_entries = list(it)
+                    except OSError:
+                        continue
+
+                    matched_subdirs = set()
+                    for entry in mod_entries:
+                        try:
+                            if not entry.is_file(follow_symlinks=False) or not entry.name.lower().endswith('.mod'):
+                                continue
+                            if entry.name.startswith('workshop_translation_'):
+                                continue
+                            mod_file = Path(entry.path)
+                            try:
+                                text = mod_file.read_text(encoding='utf-8', errors='replace')
+                            except OSError:
+                                continue
+
+                            name_match = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.M)
+                            path_match = re.search(r'^\s*path\s*=\s*"([^"]+)"', text, re.M)
+                            remote_match = re.search(r'^\s*remote_file_id\s*=\s*"([0-9]+)"', text, re.M)
+                            title = name_match[1] if name_match else mod_file.stem
+                            is_steam = bool(remote_match or mod_file.name.startswith('ugc_'))
+                            steam_uid = remote_match[1] if remote_match else re.sub(r'\D', '', mod_file.stem)
+
+                            if is_steam and steam_uid:
+                                uid = steam_uid
+                                identifier = f'{appid}:{uid}'
+                                resolved_path = None
+                                if path_match:
+                                    raw_p = Path(path_match[1].replace('\\', '/'))
+                                    if raw_p.is_absolute() and raw_p.is_dir():
+                                        resolved_path = raw_p.resolve()
+                                    elif (mod_dir.parent / raw_p).is_dir():
+                                        resolved_path = (mod_dir.parent / raw_p).resolve()
+                                    elif (mod_dir / raw_p).is_dir():
+                                        resolved_path = (mod_dir / raw_p).resolve()
+                                if not resolved_path:
+                                    for lib in libraries:
+                                        c = lib / 'steamapps/workshop/content' / appid / uid
+                                        if c.is_dir():
+                                            resolved_path = c.resolve()
+                                            break
+                                if resolved_path and resolved_path.is_dir() and identifier not in found:
+                                    fingerprints[identifier] = directory_stamp(resolved_path)
+                                    found[identifier] = {
+                                        'id': identifier, 'uid': uid, 'appid': appid, 'game': game,
+                                        'game_title': game_title, 'title': title or f'Mod {uid}',
+                                        'path': str(resolved_path),
+                                        'url': f'https://steamcommunity.com/sharedfiles/filedetails/?id={uid}',
+                                        'name_source': '本地描述文件', 'translated': False,
+                                        'discovery_source': 'Paradox Launcher (Steam)',
+                                        'workshop': {},
+                                        'steam_update_pending': False,
+                                        'is_local': False
+                                    }
+                            else:
+                                # 本地 mod 处理：按指定路径寻找，无路径就在本文件夹寻找
+                                resolved_path = None
+                                if path_match:
+                                    raw_p = Path(path_match[1].replace('\\', '/'))
+                                    if raw_p.is_absolute() and raw_p.is_dir():
+                                        resolved_path = raw_p.resolve()
+                                    elif (mod_dir.parent / raw_p).is_dir():
+                                        resolved_path = (mod_dir.parent / raw_p).resolve()
+                                    elif (mod_dir / raw_p).is_dir():
+                                        resolved_path = (mod_dir / raw_p).resolve()
+                                    elif (mod_dir / raw_p.name).is_dir():
+                                        resolved_path = (mod_dir / raw_p.name).resolve()
+                                if not resolved_path:
+                                    # 无路径就在本文件夹对应子目录查找
+                                    candidate = mod_dir / mod_file.stem
+                                    if candidate.is_dir():
+                                        resolved_path = candidate.resolve()
+
+                                if resolved_path and resolved_path.is_dir():
+                                    if (resolved_path / 'source-manifest.json').is_file():
+                                        continue
+                                    matched_subdirs.add(resolved_path)
+                                    clean_stem = re.sub(r'[^0-9a-zA-Z_-]+', '_', mod_file.stem).strip('_')
+                                    uid = f'local_{clean_stem}' if clean_stem else f'local_{abs(hash(str(resolved_path)))}'
+                                    identifier = f'{appid}:{uid}'
+                                    if identifier not in found:
+                                        desc = resolved_path / 'descriptor.mod'
+                                        if desc.is_file() and not name_match:
+                                            try:
+                                                desc_text = desc.read_text(encoding='utf-8', errors='replace')
+                                                m = re.search(r'^\s*name\s*=\s*"([^"]+)"', desc_text, re.M)
+                                                if m:
+                                                    title = m[1]
+                                            except OSError:
+                                                pass
+                                        fingerprints[identifier] = directory_stamp(resolved_path)
+                                        found[identifier] = {
+                                            'id': identifier, 'uid': uid, 'appid': appid, 'game': game,
+                                            'game_title': game_title, 'title': title or f'Mod {mod_file.stem}',
+                                            'path': str(resolved_path),
+                                            'url': '',
+                                            'name_source': '本地描述文件', 'translated': False,
+                                            'discovery_source': 'Paradox 本地 Mod',
+                                            'workshop': {},
+                                            'steam_update_pending': False,
+                                            'is_local': True
+                                        }
+                        except OSError:
+                            continue
+
+                    # 扫描 mod 文件夹下直接包含 descriptor.mod 的本地 mod 子目录
+                    for entry in mod_entries:
+                        try:
+                            if not entry.is_dir(follow_symlinks=False):
+                                continue
+                            if entry.name.startswith('workshop_translation_'):
+                                continue
+                            subdir = Path(entry.path)
+                            if (subdir / 'source-manifest.json').is_file():
+                                continue
+                            if subdir.resolve() in matched_subdirs:
+                                continue
+                            desc = subdir / 'descriptor.mod'
+                            if desc.is_file():
+                                clean_name = re.sub(r'[^0-9a-zA-Z_-]+', '_', subdir.name).strip('_')
+                                uid = f'local_{clean_name}' if clean_name else f'local_{abs(hash(str(subdir)))}'
+                                identifier = f'{appid}:{uid}'
+                                if identifier not in found:
+                                    title = local_title(subdir, subdir.name)
+                                    fingerprints[identifier] = directory_stamp(subdir)
+                                    found[identifier] = {
+                                        'id': identifier, 'uid': uid, 'appid': appid, 'game': game,
+                                        'game_title': game_title, 'title': title or f'Mod {subdir.name}',
+                                        'path': str(subdir.resolve()),
+                                        'url': '',
+                                        'name_source': '本地描述文件', 'translated': False,
+                                        'discovery_source': 'Paradox 本地 Mod',
+                                        'workshop': {},
+                                        'steam_update_pending': False,
+                                        'is_local': True
+                                    }
+                        except OSError:
+                            continue
+
         with self.connect() as db:
             snapshots = {row[0]: row[1:] for row in db.execute(
                 'SELECT mod_id,fingerprint,metadata_ok,item_json FROM scan_snapshots')}
@@ -589,20 +837,23 @@ class WorkshopService:
                 if not old:
                     item['title'] = local_title(Path(item['path']), item['uid'])
                 pending.append(identifier)
-        self.log(f'清单刷新：发现 {len(found)} 个本机 Mod，优先读取 Steam ACF；未读取翻译内容')
+        self.log(f'清单刷新：发现 {len(found)} 个本机 Mod（含 Steam 工坊与 Paradox 本地 Mod），优先读取 ACF 与本地 .mod；未读取翻译内容')
+        steam_pending = [found[key]['uid'] for key in pending if not found[key].get('is_local') and re.fullmatch(r'[0-9]+', str(found[key]['uid']))]
         try:
-            details = fetch(list(dict.fromkeys(found[key]['uid'] for key in pending))) if pending and not self.demo else {}
+            details = fetch(list(dict.fromkeys(steam_pending))) if steam_pending and not self.demo else {}
         except Exception:
             details = {}
             self.log('Steam 查询暂不可用，保留历史名称；下次扫描重试')
         with self.connect() as db:
             for identifier, item in found.items():
                 existing = db.execute('SELECT title FROM mods WHERE id=?', (identifier,)).fetchone()
-                detail = details.get(item['uid'])
+                detail = details.get(item['uid']) if not item.get('is_local') else None
                 valid = bool(detail and detail.get('title') and
                              str(detail.get('consumer_app_id', item['appid'])) == item['appid'])
-                item['_metadata_ok'] = self.demo or valid or (identifier not in pending)
-                if valid:
+                item['_metadata_ok'] = self.demo or item.get('is_local') or valid or (identifier not in pending)
+                if item.get('is_local'):
+                    item['name_source'] = '本地描述文件'
+                elif valid:
                     item['title'], item['name_source'] = detail['title'], 'Steam 创意工坊'
                 elif existing and identifier in pending:
                     item['title'], item['name_source'] = existing[0], '历史记录'
@@ -1400,22 +1651,18 @@ class WorkshopService:
             candidates_to_remove = set()
             for name in sources:
                 candidates_to_remove.add(target_path(name, item['game']))
-            for folder_name in ('localisation', 'localization'):
-                folder = root / folder_name
-                if not folder.is_dir() or folder.is_symlink():
+            for path in find_localisation_files(root):
+                if path.is_symlink() or not path.resolve().is_relative_to(root):
                     continue
-                for path in sorted(folder.rglob('*.yml')):
-                    if path.is_symlink() or not path.resolve().is_relative_to(root):
-                        continue
-                    rel = path.relative_to(root).as_posix()
-                    if rel in sources:
-                        continue
-                    try:
-                        text = path.read_bytes().decode('utf-8-sig')
-                    except (UnicodeError, OSError):
-                        continue
-                    if 'simp_chinese' in Path(rel).parts or 'l_simp_chinese' in path.name or re.search(r'^\s*l_simp_chinese\s*:', text, re.M):
-                        candidates_to_remove.add(rel)
+                rel = path.relative_to(root).as_posix()
+                if rel in sources:
+                    continue
+                try:
+                    text = path.read_bytes().decode('utf-8-sig')
+                except (UnicodeError, OSError):
+                    continue
+                if 'simp_chinese' in Path(rel).parts or 'l_simp_chinese' in path.name or re.search(r'^\s*l_simp_chinese\s*:', text, re.M):
+                    candidates_to_remove.add(rel)
             for rel in sorted(candidates_to_remove):
                 target = root / rel
                 if target.is_symlink() or not target.resolve().is_relative_to(root):
@@ -1986,6 +2233,56 @@ class Handler(BaseHTTPRequestHandler):
                 folder.mkdir(parents=True, exist_ok=True)
                 open_folder(folder)
                 return self.send(200, {'ok':True})
+            if self.path in ('/api/translate_ui', '/api/translate-ui'):
+                code = str(body.get('code', '')).strip().lower()
+                name = str(body.get('name', '')).strip()
+                if not code or not re.match(r'^[a-z]{2,5}(-[a-z]{2,5})?$', code):
+                    raise ValueError('请输入有效的语言代码（例如 fr, de, es, pt-br）')
+                if not name:
+                    name = code.upper()
+                api_key = str(body.get('api_key', '')).strip() or service.config().get('api_key', '').strip()
+                base_url = str(body.get('base_url', '')).strip() or service.config().get('base_url', 'https://api.deepseek.com').strip()
+                model = str(body.get('model', '')).strip() or service.config().get('model', 'deepseek-chat').strip()
+                if not api_key and not service.demo:
+                    raise ValueError('请提供 API Key 或先在设置中保存 API Key')
+                catalog_path = ROOT / 'ui_languages.json'
+                all_catalogs = json.loads(catalog_path.read_text(encoding='utf-8'))
+                base_dict = all_catalogs.get('en', all_catalogs.get('zh-CN', {}))
+                to_translate = {k: v for k, v in base_dict.items() if isinstance(v, str) and v.strip() and not k.startswith('__') and '.' in k}
+                if service.demo or api_key == 'test-key':
+                    translated = {k: f"[{name}] {v}" for k, v in to_translate.items()}
+                else:
+                    import request
+                    request.load_sdk()
+                    client = request.OpenAI(api_key=api_key, base_url=base_url, timeout=90, max_retries=1)
+                    prompt = (
+                        f"You are a professional software localization expert. Translate these UI text phrases and button labels into {name} (language code: {code}).\n"
+                        "Return ONLY a valid JSON dictionary mapping the exact same keys to their translated values.\n"
+                        "Preserve variables like $VALUE$, placeholders like [..], and technical terms like 'Mod', 'Steam', 'Paradox', 'UID', 'YML', 'JSON'."
+                    )
+                    resp = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": json.dumps(to_translate, ensure_ascii=False)}
+                        ],
+                        response_format={"type": "json_object"} if hasattr(client, 'chat') else None,
+                        temperature=0.2,
+                    )
+                    raw_content = resp.choices[0].message.content.strip()
+                    if raw_content.startswith("```"):
+                        raw_content = re.sub(r"^```[a-zA-Z]*\n", "", raw_content)
+                        raw_content = re.sub(r"\n```$", "", raw_content)
+                    translated = json.loads(raw_content)
+                translated['__lang_name__'] = name
+                for k, v in base_dict.items():
+                    if k not in translated and not k.startswith('__'):
+                        translated[k] = v
+                all_catalogs[code] = translated
+                atomic_bytes(catalog_path, json.dumps(all_catalogs, ensure_ascii=False, indent=2).encode('utf-8'))
+                from localization import LANGUAGES
+                LANGUAGES[code] = {'name': name, 'slot': code}
+                return self.send(200, {'ok': True, 'code': code, 'name': name, 'count': len(translated)})
             if self.path == '/api/config-storage':
                 return self.send(200, service.switch_config_storage(body['mode']))
             if self.path == '/api/config':

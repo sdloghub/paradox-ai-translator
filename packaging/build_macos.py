@@ -40,7 +40,7 @@ def main():
     if app.exists():
         shutil.rmtree(app)
     subprocess.run(['/usr/bin/ditto', str(ROOT / 'dist/WorkshopTranslator.app'), str(app)], check=True)
-    shutil.copy2(ROOT / 'Mac使用说明.md', destination / 'Mac使用说明.md')
+    shutil.copy2(ROOT / 'introduction.md', destination / 'introduction.md')
     # Refresh bundled templates without overwriting any existing portable settings.
     for name, payload in release_settings().items():
         target = destination / name
@@ -56,7 +56,7 @@ def main():
             payload = Path(temporary) / package_name
             payload.mkdir()
             subprocess.run(['/usr/bin/ditto', str(app), str(payload / app.name)], check=True)
-            shutil.copy2(ROOT / 'Mac使用说明.md', payload / 'Mac使用说明.md')
+            shutil.copy2(ROOT / 'introduction.md', payload / 'introduction.md')
             (payload / '更新说明.txt').write_text(
                 '请先退出旧版 WorkshopTranslator 进程。\n'
                 '解压后，将 WorkshopTranslator.app 拖入原程序文件夹，选择替换整个应用。\n'
