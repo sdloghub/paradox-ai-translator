@@ -45,6 +45,15 @@ class CodexTests(unittest.TestCase):
                     self.assertEqual(response.status, 403)
                     response.read()
                 connection.close()
+                with patch.object(app.Handler, 'is_dev_logged_in', return_value=True):
+                    connection = http.client.HTTPConnection('127.0.0.1', server.server_port)
+                    for action in ('status', 'start', 'stop'):
+                        connection.request('POST', '/api/codex-' + action, json.dumps({'prompt':'test'}), {'X-App-Token':server.token})
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, 410)
+                        response.read()
+                    connection.close()
+                self.assertFalse(hasattr(server, 'codex_console'))
             finally:
                 server.shutdown()
                 server.server_close()

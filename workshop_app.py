@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.11.06-glossary.1'
+APP_VERSION = '2026.11.06-glossary.2'
 
 
 def program_directory():
@@ -1557,8 +1557,6 @@ class AppServer(ThreadingHTTPServer):
         if getattr(service, 'server_mode', False):
             from server_sessions import forget_saved_keys
             forget_saved_keys(service)
-        from server_codex import CodexConsole
-        self.codex_console = CodexConsole(service.data_dir)
         self.terminals = {}
         self.terminal_lock = threading.RLock()
         self.login = None
@@ -1907,14 +1905,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path.startswith('/api/codex-'):
                 if not getattr(self.server.service, 'server_mode', False) or not self.is_dev_logged_in():
                     return self.send(403, {'error': '仅已登录开发者可调用服务器 Codex'})
-                console = self.server.codex_console
-                if self.path == '/api/codex-status':
-                    return self.send(200, console.status(check_login=bool(body.get('check_login'))))
-                if self.path == '/api/codex-start':
-                    return self.send(202, console.start(body.get('prompt')))
-                if self.path == '/api/codex-stop':
-                    return self.send(200, console.stop())
-                return self.send(404, {'error': '未知 Codex 操作'})
+                return self.send(410, {'error': '开发者 Codex CLI 功能已关闭'})
             if self.path == '/api/import-saved' and getattr(service, 'server_mode', False):
                 if not self.is_dev_logged_in():
                     return self.send(403, {'error': '仅开发者可使用已保存译文'})

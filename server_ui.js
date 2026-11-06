@@ -93,38 +93,6 @@
     const job = state.jobs?.[selected];
     if (job?.kind === 'translate' && job.result && !job.error && !job.running) offer(selected, job);
   };
-  const codexPanel = document.createElement('section');
-  codexPanel.className = 'card';
-  codexPanel.hidden = true;
-  codexPanel.innerHTML = `<h2>开发者 · 服务器 Codex CLI</h2><p class="sub">使用服务器的 Codex 登录。任务只读运行，最长 10 分钟；不会自动发送翻译文件或 API Key。</p><button id="codex_connect">检查连接</button><p id="codex_status" role="status">尚未检查连接</p><label for="codex_prompt">任务</label><textarea id="codex_prompt" rows="4" maxlength="12000" placeholder="输入要交给 Codex 的任务"></textarea><div class="row"><button id="codex_run">执行</button><button id="codex_stop" disabled>停止</button></div><pre id="codex_output" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto" aria-live="polite"></pre>`;
-  $('developer_exports').after(codexPanel);
-  let codexPolling = false;
-  async function codexUpdate(checkLogin = false) {
-    if (!state?.dev_logged_in || codexPolling) return;
-    codexPolling = true;
-    try {
-      const result = await api('codex-status', {check_login:checkLogin});
-      if (checkLogin) $('codex_status').textContent = !result.installed ? '服务器未安装 Codex CLI' : result.logged_in ? '已连接服务器 Codex CLI' : 'CLI 已安装，网站服务用户尚未登录';
-      if (result.running) $('codex_status').textContent = '正在执行…';
-      else if (result.output && !result.error) $('codex_status').textContent = '执行完成';
-      if (result.error) $('codex_status').textContent = result.error;
-      $('codex_run').disabled = result.running;
-      $('codex_stop').disabled = !result.running;
-      $('codex_output').textContent = result.output || '';
-    } catch (error) { $('codex_status').textContent = error.message; }
-    finally { codexPolling = false; }
-  }
-  $('codex_connect').onclick = () => codexUpdate(true);
-  $('codex_run').onclick = async () => {
-    $('codex_run').disabled = true;
-    try { await api('codex-start', {prompt:$('codex_prompt').value}); await codexUpdate(); }
-    catch (error) { $('codex_status').textContent = error.message; $('codex_run').disabled = false; }
-  };
-  $('codex_stop').onclick = async () => {
-    try { await api('codex-stop', {}); await codexUpdate(); }
-    catch (error) { $('codex_status').textContent = error.message; }
-  };
-  setInterval(() => { if (!codexPanel.hidden) codexUpdate(); }, 2000);
   const terminalPanel = document.createElement('section');
   terminalPanel.className = 'card wide';
   terminalPanel.hidden = true;
@@ -179,14 +147,12 @@
     const currentMod = state.mods.find(mod => mod.id === selected);
     $('mod_access_control').hidden = !developer || !currentMod;
     $('mod_guest_access').checked = currentMod?.guest_allowed !== false;
-    codexPanel.hidden = !developer;
     const terminalWasHidden = terminalPanel.hidden;
     terminalPanel.hidden = !developer;
     if (developer && terminalWasHidden) terminalUpdate();
     if (!developer) {
       renderTerminal({connected:false, output:'', ip:'—', region:'—'});
     }
-    if (!developer) { $('codex_output').textContent = ''; $('codex_prompt').value = ''; }
     settings.querySelectorAll('[data-saved-setting]').forEach(el => el.hidden = !developer);
     $('dev_login_btn').textContent = developer ? '开发者已登录 · 退出' : '开发者登录';
     $('api_key').placeholder = '每次翻译前填写，不保存';
