@@ -37,16 +37,25 @@
     if (path === 'config' && body) { body = {...body}; delete body.api_key; }
     return originalApi(path, body);
   };
+  if ($('memory_limit_note')) {
+    $('memory_limit_note').textContent = '网页版已启用服务器内存上限保护（单次扫描上限 32 MB / 40,000 条，术语扫描上限 16 MB / 300 条）；也可点击「词云扫描 / 编辑术语表」使用内置浏览器端 JS/TS 引擎本地秒扫词云。';
+  }
   window.startServerTranslation = async () => {
     const mod = state?.mods.find(m => m.id === selected);
     if (!mod) return;
     const useAI = $('use_ai').checked;
+    const wf = $('workflow_mode')?.value || 'fast';
+    const ex = $('glossary_extract_mode')?.value || 'short_keys';
+    const ap = $('glossary_approval_mode')?.value || 'manual';
     const settings = {base_url:$('base_url').value.trim(), model:$('model').value.trim(),
       api_key:$('api_key').value.trim(), batch_size:Number($('batch_size').value), concurrency:Number($('concurrency').value)};
-    if (useAI && !settings.api_key && mod.counts?.untranslated > 0) { toast('请先在「本次翻译 API」填写自己的 API Key。'); return; }
-    if (!await ask(useAI ? `翻译「${mod.title}」？英文文本将发往 ${settings.base_url}，模型为 ${settings.model}，可能产生费用。密钥不保存；译文只在你的工作区内处理，完成后由你选择是否共享。` : `仅导入缓存和本机已有中文到「${mod.title}」？不调用任何 API，缺失条目保留英文。`, '确认翻译')) return;
+    if (useAI && !settings.api_key && (mod.counts?.untranslated > 0 || (wf === 'glossary' && (ex === 'ai_extract' || ap === 'ai_approve')))) {
+      toast('请先在「本次翻译 API」填写自己的 API Key。'); return;
+    }
+    const modeLabel = wf === 'glossary' ? `术语表模式（提取：${ex}，审批：${ap}${ex==='ai_extract'||ap==='ai_approve'?' · 注意：可能会花较多 Token':''}）` : '快速模式（无术语表，节省消耗）';
+    if (!await ask(useAI ? `翻译「${mod.title}」？\n模式：${modeLabel}\n英文文本将发往 ${settings.base_url}，模型为 ${settings.model}，可能产生费用。密钥不保存；译文只在你的工作区内处理，完成后由你选择是否共享。` : `仅导入缓存和本机已有中文到「${mod.title}」？不调用任何 API，缺失条目保留英文。`, '确认翻译')) return;
     try {
-      await api('translate', {id:selected, api:settings, use_ai:useAI});
+      await api('translate', {id:selected, api:settings, use_ai:useAI, workflow_mode:wf, extract_mode:ex, approval_mode:ap});
       $('api_key').value = '';
       settings.api_key = '';
       await refresh();
@@ -387,6 +396,10 @@
     </div>
     <label for="upload_import_provider" style="margin-top:12px">导入者名称（可留空自动命名）</label>
     <input id="upload_import_provider" maxlength="80" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
+    <div class="cache-options" style="margin-top:12px;padding:10px 12px">
+      <div class="sub" style="margin-bottom:6px">本程序导出的压缩包（含 .cache.json）会自动直接提取包内中英术语表（优先 &lt;5 个单词的短键值）。</div>
+      <label><input type="checkbox" id="upload_import_extract_glossary_ai"> 若导入纯 .yml 文件，使用 AI 自动提取中文重复出现内容做术语表（备注：可能会消耗较多 Token）</label>
+    </div>
     <p id="upload_import_status" class="sub" role="status" style="margin:10px 0 0"></p>
     <div class="row" style="margin-top:16px;justify-content:flex-end">
       <button id="cancel_upload_import" type="button">取消</button>
@@ -431,14 +444,16 @@
         body = archive.blob; filename = (folderFiles[0].webkitRelativePath.split('/')[0] || 'folder-translations') + '.zip';
         $('upload_import_status').textContent = `正在上传 ${archive.count} 个译文 / 缓存文件…`;
       }
+      const extractGlossaryAi = Boolean($('upload_import_extract_glossary_ai')?.checked);
       const query = new URLSearchParams({
         id: importTarget,
         provider: $('upload_import_provider').value.trim(),
-        filename
+        filename,
+        extract_glossary_ai: extractGlossaryAi ? '1' : '0'
       });
       let result;
       if (savedId) {
-        result = await api('import-saved', {id: importTarget, upload_id: savedId});
+        result = await api('import-saved', {id: importTarget, upload_id: savedId, extract_glossary_ai: extractGlossaryAi});
       } else {
         const response = await fetch('/api/upload-import?' + query, {
           method: 'POST',

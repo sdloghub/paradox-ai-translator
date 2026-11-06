@@ -92,11 +92,29 @@ def _parse_json_candidates(raw_text):
         raise ValueError('缓存 JSON 必须是对象')
     if payload.get('format') == FORMAT:
         return [{**entry, 'target_language': payload.get('target_language', 'zh-CN'), 'mod_id': payload.get('mod_id')} for entry in payload.get('entries', []) if isinstance(entry, dict)]
+    if payload.get('format') == 'workshop-translator-glossary-v1':
+        return []
     result = []
     for key, value in payload.items():
         if isinstance(value, dict) and isinstance(value.get('source_hash'), str):
             result.append({'key': value.get('key', key.split('\x1f', 1)[0]), 'text': value.get('text'), 'source_hash': value['source_hash']})
     return result
+
+
+def _extract_json_glossary(raw_text):
+    try:
+        payload = json.loads(raw_text)
+    except Exception:
+        return False, []
+    if not isinstance(payload, dict):
+        return False, []
+    if payload.get('format') == FORMAT:
+        glossary = payload.get('glossary', [])
+        return True, [item for item in glossary if isinstance(item, dict)] if isinstance(glossary, list) else []
+    if payload.get('format') == 'workshop-translator-glossary-v1':
+        glossary = payload.get('terms', payload.get('glossary', []))
+        return True, [item for item in glossary if isinstance(item, dict)] if isinstance(glossary, list) else []
+    return False, []
 
 
 def _parse_yml_candidates(filename, data, game):
@@ -118,11 +136,18 @@ def _parse_yml_candidates(filename, data, game):
     return result
 
 
-def candidates(path, game):
+def inspect_import_source(path, game):
+    """Parse translation candidates and detect whether source is an exported package or pure YML."""
     path = Path(path).expanduser().resolve()
-    paths = sorted(list(path.rglob('*.yml')) + list(path.rglob('*.yaml')) + list(path.rglob('*.cache.json')) + list(path.rglob('*.zip'))) if path.is_dir() else [path]
+    paths = sorted(list(path.rglob('*.yml')) + list(path.rglob('*.yaml')) + list(path.rglob('*.cache.json')) + list(path.rglob('*.json')) + list(path.rglob('*.zip'))) if path.is_dir() else [path]
+    # Deduplicate while preserving order
+    paths = list(dict.fromkeys(paths))
     json_entries = []
     yml_entries = []
+    is_exported_package = False
+    embedded_glossary = []
+    has_json = False
+
     for file in paths:
         if file.is_symlink() or not file.is_file():
             continue
@@ -130,7 +155,15 @@ def candidates(path, game):
             continue
         suffix = file.suffix.lower()
         if suffix == '.json':
-            json_entries.extend(_parse_json_candidates(file.read_text(encoding='utf-8-sig')))
+            if path.is_dir() and not (file.name.endswith('.cache.json') or file.name == 'glossary.json'):
+                continue
+            has_json = True
+            raw_text = file.read_text(encoding='utf-8-sig')
+            is_pkg, gloss = _extract_json_glossary(raw_text)
+            if is_pkg:
+                is_exported_package = True
+                embedded_glossary.extend(gloss)
+            json_entries.extend(_parse_json_candidates(raw_text))
         elif suffix in ('.yml', '.yaml'):
             yml_entries.extend(_parse_yml_candidates(file, file.read_bytes(), game))
         elif suffix == '.zip':
@@ -147,7 +180,13 @@ def candidates(path, game):
             for name, content in sorted(members.items()):
                 lower = name.lower()
                 if lower.endswith('.json'):
-                    json_entries.extend(_parse_json_candidates(content.decode('utf-8-sig')))
+                    has_json = True
+                    raw_text = content.decode('utf-8-sig')
+                    is_pkg, gloss = _extract_json_glossary(raw_text)
+                    if is_pkg:
+                        is_exported_package = True
+                        embedded_glossary.extend(gloss)
+                    json_entries.extend(_parse_json_candidates(raw_text))
                 elif lower.endswith(('.yml', '.yaml')):
                     yml_entries.extend(_parse_yml_candidates(name, content, game))
     if json_entries and yml_entries:
@@ -172,7 +211,20 @@ def candidates(path, game):
                     item['target_language'] = match[2]
                     if match[1] and not item.get('mod_id'):
                         item['mod_id'] = match[1]
-    return json_entries + yml_entries
+    if json_entries and not is_exported_package:
+        is_exported_package = True
+    return {
+        'candidates': json_entries + yml_entries,
+        'yml_entries': yml_entries,
+        'json_entries': json_entries,
+        'is_exported_package': is_exported_package,
+        'is_pure_yml': bool(yml_entries) and not has_json,
+        'embedded_glossary': embedded_glossary,
+    }
+
+
+def candidates(path, game):
+    return inspect_import_source(path, game)['candidates']
 
 
 class ModCache:
@@ -306,7 +358,10 @@ class ModCache:
             VALUES (?,?,?,?,?,?,?)''', (identifier, entry['source_file'], entry['key'], digest(entry['text']), text, digest(text), origin))
 
     def import_candidates(self, item, sources, translations, origin):
+        from glossary import check_server_memory_limit
+        check_server_memory_limit(self.service, sources=sources, stage='导入译文')
         source_entries = [entry for entry in entries(sources, item['game'], strict=False) if entry['text'].strip()]
+        check_server_memory_limit(self.service, entries_count=len(source_entries), stage='导入译文')
         imported = rejected = accepted = 0
         source_counts = {}
         for entry in source_entries:
@@ -400,8 +455,11 @@ class ModCache:
         return workspace
 
     def stats(self, item, sources, local_entries=None):
+        from glossary import check_server_memory_limit
+        check_server_memory_limit(self.service, sources=sources, stage='扫描')
         issues = []
         current = entries(sources, item['game'], issues=issues)
+        check_server_memory_limit(self.service, entries_count=len(current), stage='扫描')
         duplicates = duplicate_issues(current)
         issues.extend(duplicates)
         invalid = {(issue['file'], issue['line']) for issue in duplicates}
@@ -494,8 +552,10 @@ class ModCache:
     def export(self, item):
         with self.service.connect() as db:
             rows = db.execute('''SELECT source_file,entry_key,source_hash,chinese,origin FROM translation_entries WHERE mod_id=?''', (item['id'],)).fetchall()
+        glossary_terms = self.service.glossary.list_terms(item['id']) if hasattr(self.service, 'glossary') else []
         return {'format': FORMAT, 'target_language': self.service.target_language, 'mod_id': item['id'], 'title': item['title'],
-                'entries': [{'source_file': f, 'key': k, 'source_hash': h, 'text': t, 'origin': o} for f, k, h, t, o in rows]}
+                'entries': [{'source_file': f, 'key': k, 'source_hash': h, 'text': t, 'origin': o} for f, k, h, t, o in rows],
+                'glossary': glossary_terms}
 
     def export_package(self, item):
         from workshop_app import archive, target_path
@@ -509,6 +569,13 @@ class ModCache:
         package_files = {
             cache_filename: json.dumps(cache_payload, ensure_ascii=False, indent=2).encode('utf-8')
         }
+        if cache_payload.get('glossary'):
+            package_files['glossary.json'] = json.dumps({
+                'format': 'workshop-translator-glossary-v1',
+                'mod_id': item['id'],
+                'target_language': self.service.target_language,
+                'terms': cache_payload['glossary'],
+            }, ensure_ascii=False, indent=2).encode('utf-8')
         with self.service.connect() as db:
             cached_rows = {(f, k, h): t for f, k, h, t in db.execute(
                 'SELECT source_file,entry_key,source_hash,chinese FROM translation_entries WHERE mod_id=?', (item['id'],))}

@@ -251,12 +251,14 @@ def outputs(local_path, dic, mde, output_root=None, project_root=None, duplicate
             lines.append(line)
     atomic_write(dst, ''.join(lines))
 
-def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None, duplicate_keys=(), shared_translations=None):
+def translate_para(local_path, mde, output_root=None, project_root=None, translator=None, issues=None, duplicate_keys=(), shared_translations=None, glossary=None):
     import hashlib
     import json
     import logging
+    from functools import partial
     project_root = Path(project_root) if project_root is not None else ROOT
-    translator = translator or request.request_deepseek_batch
+    if translator is None:
+        translator = partial(request.request_deepseek_batch, glossary=glossary) if glossary else request.request_deepseek_batch
     entries = extract(project_root / 'localisation' / local_path, mde, issues=issues)
     if duplicate_keys:
         from translation_cache import entries as parsed_entries, duplicate_issues

@@ -129,7 +129,7 @@ def valid_translation(original, translated, language=None):
             and (is_token_only(original) or bool(re.search(target_pattern(language), translated)))
             and Counter(TOKENS.findall(original)) == Counter(TOKENS.findall(output_text(translated))))
 
-def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40, config=None, progress=None):
+def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size=40, config=None, progress=None, glossary=None):
     """返回与输入顺序一致的 {text, success, error}；失败项保留原文。"""
     if batch_size < 1 or pool_size < 1:
         raise ValueError("batch_size 和 pool_size 必须大于零")
@@ -143,11 +143,13 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
         results = [{"text": text, "success": True, "error": None} for text in tran]
         if translatable:
             translated = request_deepseek_batch([tran[index] for index in translatable], game,
-                al_cnt + len(tran) - len(translatable), all_len, batch_size, pool_size, config, progress)
+                al_cnt + len(tran) - len(translatable), all_len, batch_size, pool_size, config, progress, glossary=glossary)
             for index, result in zip(translatable, translated):
                 results[index] = result
         return results
     config = config or {}
+    if glossary is None:
+        glossary = config.get("glossary")
     api_key = config.get("api_key") or os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise RuntimeError("请在设置中填写 API Key")
@@ -159,16 +161,22 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
     rule = findrule(game, language)
     separator = "\n---SEPARATOR---\n"
 
+    def _glossary_suffix(texts):
+        if not glossary:
+            return ''
+        from glossary import format_glossary_prompt_for_batch
+        return format_glossary_prompt_for_batch(texts, glossary, language)
+
     def failed(original, error):
         return {"text": original, "success": False, "error": error}
 
-    def translate_text(text, protected=False):
+    def translate_text(text, protected=False, extra_rule=''):
         # SDK 重试关闭，由这里控制：首次请求加最多三次临时错误重试。
         for attempt in range(4):
             try:
                 response = client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "system", "content": rule + (
+                    messages=[{"role": "system", "content": rule + extra_rule + (
                         '\n本条中的 ⟦WT…⟧ 是程序保护的游戏标记。必须逐字保留每个占位符各一次，'
                         '不要翻译、删除、复制或修复它们。仅翻译其余正文，仅返回译文。' if protected else '')},
                               {"role": "user", "content": text}],
@@ -189,8 +197,9 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
                 time.sleep(2 ** attempt)
 
     def translate_batch(batch):
+        batch_glossary = _glossary_suffix(batch)
         try:
-            content = translate_text(separator.join(batch))
+            content = translate_text(separator.join(batch), extra_rule=batch_glossary)
         except LegalComplianceError:
             raise
         except Exception as error:
@@ -204,17 +213,18 @@ def request_deepseek_batch(tran, game, al_cnt, all_len, batch_size=25, pool_size
         logging.warning("批次分隔符数量或内容不正确，改为逐条翻译")
         results = []
         for original in batch:
+            item_glossary = _glossary_suffix([original])
             try:
                 for validation_attempt in range(3):
                     if validation_attempt:
                         masked, tokens = protect_tokens(original)
                         try:
-                            text = restore_tokens(translate_text(masked, protected=True).strip(), tokens)
+                            text = restore_tokens(translate_text(masked, protected=True, extra_rule=item_glossary).strip(), tokens)
                         except ProtectedTokenError:
                             text = ''
                             continue
                     else:
-                        text = translate_text(original).strip()
+                        text = translate_text(original, extra_rule=item_glossary).strip()
                     if valid_translation(original, text, language):
                         break
                 else:

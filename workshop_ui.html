@@ -309,7 +309,12 @@ dialog::backdrop{background:var(--backdrop)}
 .tutorial-skip-btn{padding:5px 10px;font-size:12px;color:var(--muted)}
 .tutorial-highlight{outline:3px solid var(--accent)!important;outline-offset:3px!important;box-shadow:0 0 0 6px var(--selected-bg)!important;position:relative;z-index:860}
 .upload-trigger-btn{padding:7px 12px;font-size:12px}
-
+.wordcloud-box{display:flex;flex-wrap:wrap;gap:8px;padding:12px;background:var(--surface-subtle);border:1px solid var(--line);border-radius:6px;max-height:170px;overflow:auto;margin:10px 0}
+.wordcloud-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer;font-size:12px;user-select:none}
+.wordcloud-chip[data-active="true"]{background:var(--selected-bg);border-color:var(--selected-border);color:var(--accent);font-weight:600}
+.wordcloud-chip small{font:10px 'SF Mono',monospace;color:var(--muted)}
+.glossary-table-wrap{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:10px}
+.glossary-table input[type="text"]{padding:6px 8px;font-size:12px}
 .language-control{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);max-width:100%}.language-control select{width:auto;min-width:130px;margin:0}.header-controls #language_hint{max-width:340px;text-align:right;font-size:11px}@media(max-width:640px){.language-control{flex-wrap:wrap}.header-controls #language_hint{text-align:left}}
 </style>
 <header>
@@ -341,7 +346,7 @@ dialog::backdrop{background:var(--backdrop)}
 <aside id="beginner_tutorial" class="tutorial-sidebar" hidden aria-label="本地版新手教程侧边栏"></aside>
 <section id="developer_exports" class="card aggregate-panel" aria-labelledby="aggregate_title" hidden><div class="row"><div class="grow"><h2 id="aggregate_title">开发者 · 自动生成翻译 Mod</h2><label class="aggregate-switch" for="aggregate_export"><input id="aggregate_export" type="checkbox" checked>回写后自动生成每个原 Mod 的独立翻译补丁</label></div><button id="open_aggregate">打开翻译 Mod 目录</button></div><div class="sub">仅开发者模式可见。按游戏与原 Mod UID 分开保存，不再合并不同 Mod。旧成果更新前备份；简介优先复用，首次使用默认 API 生成（无 API 时使用模板）。</div><div id="aggregate_location" class="path"></div></section>
 <div class="grid"><section class="card"><div class="row"><h2 class="grow">本机创意工坊</h2><button id="scan" class="primary">刷新目录</button></div><div class="sub library-note">优先读取 Steam ACF 已安装清单。自动按「已扫描未完全翻译 → 已扫描完全翻译 → 未扫描」排序。</div><input id="search" placeholder="在当前游戏中搜索名称或 UID" aria-label="搜索 Mod"><div id="categories" class="categories" role="tablist" aria-label="按游戏分类"></div><div class="mods" id="mods"><div class="empty">先配置 Steam 库目录，然后点击「扫描 Mod」。<br>默认自动检测本机 Steam 库。</div></div><div class="status count-bar" id="count"></div></section>
-<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前按缓存选项整合已有中文和所选匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="cache-options"><label><input id="use_cache" type="checkbox" checked>导入缓存（自动复用）</label><div id="cache_details"><select id="cache_version" aria-label="选择缓存版本"><option value="">最新缓存（默认）</option></select><div id="cache_note" class="sub">默认使用最新缓存；可关闭或选择历史备份。仅复用英文哈希匹配的条目。导入缓存无法检查 Steam 尚未安装的更新。</div></div><label style="margin-top:12px"><input id="use_ai" type="checkbox" checked>AI 补全缺失译文</label><div id="ai_note" class="sub">关闭后仅导入缓存和本机已有中文，不调用任何 API。缺失条目保留英文。</div></div><div class="action-groups">
+<section class="card"><h2>翻译工作台</h2><div id="selection" class="empty">在左侧选择一个 Mod，查看路径并开始翻译。</div><div id="actions" hidden><div class="notice" id="translation_notice">开始前按缓存选项整合已有中文和所选匹配缓存，只将缺失或原文变化的条目发送给模型接口，可能产生费用。英文文件会复制到独立工作目录。完成后备份并回写中文文件，报错行保留英文；覆盖前会保存已有文件。</div><div class="cache-options"><label><input id="use_cache" type="checkbox" checked>导入缓存（自动复用）</label><div id="cache_details"><select id="cache_version" aria-label="选择缓存版本"><option value="">最新缓存（默认）</option></select><div id="cache_note" class="sub">默认使用最新缓存；可关闭或选择历史备份。仅复用英文哈希匹配的条目。导入缓存无法检查 Steam 尚未安装的更新。</div></div><label style="margin-top:12px"><input id="use_ai" type="checkbox" checked>AI 补全缺失译文</label><div id="ai_note" class="sub">关闭后仅导入缓存和本机已有中文，不调用任何 API。缺失条目保留英文。</div><div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"><label for="workflow_mode" style="font-weight:600;margin-bottom:6px">翻译工作流模式（可选术语表）</label><select id="workflow_mode" aria-label="选择翻译工作流模式"><option value="fast">1. 快速模式（无术语表 · 节省 Token 消耗）</option><option value="glossary">2. 术语表模式（翻译前扫描英文词云 · 统一高频译名）</option></select><div id="glossary_options" hidden style="margin-top:8px"><label for="glossary_extract_mode">术语扫描与提取范围</label><select id="glossary_extract_mode" aria-label="选择术语提取方式"><option value="short_keys">1. 只扫短键值（优先 &lt;5 个单词的独立键值，多次出现即成为术语）</option><option value="long_extract">2. 在长键值中提取（短键值 + 扫描长文本中重复出现的词汇/专名）</option><option value="ai_extract">3. AI 智能提取（备注：由 AI 深度扫描提取术语，可能会花较多 Token）</option></select><label for="glossary_approval_mode" style="margin-top:8px">术语表审批方式</label><select id="glossary_approval_mode" aria-label="选择术语审批方式"><option value="manual">先在界面展示词云 / 术语列表供勾选或修改后，再正式翻译</option><option value="ai_approve">AI 自动审批（由 AI 自动筛选并统一生成术语译名，直接用于翻译）</option></select><div id="glossary_token_warning" class="sub" style="color:var(--warn-fg);margin-top:4px" hidden>备注：已选 AI 术语提取或 AI 自动审批，执行时会额外消耗较多 API Token。</div><div class="row" style="margin-top:8px"><button type="button" id="open_glossary_btn" class="scan-action" style="padding:7px 12px">词云扫描 / 编辑术语表</button><span id="glossary_summary_badge" class="sub">尚未提取术语</span></div></div><div id="memory_limit_note" class="sub" style="margin-top:6px">本地版扫描与词云无内存上限；网页版启用服务器内存保护上限（同时内置浏览器端 JS/TS 引擎）。</div></div></div><div class="action-groups">
 <div class="action-group"><div class="action-caption">翻译处理</div><div class="action-row action-row-three" role="group" aria-label="扫描与翻译"><button id="analyze" class="scan-action">扫描此 Mod</button><button id="import_btn">导入译文</button><button id="translate" class="ai-action">翻译</button></div></div>
 <div class="action-group"><div class="action-caption">本地文件</div><div class="action-row" role="group" aria-label="查看本地文件"><button id="open">打开 Mod 文件夹</button><button id="browse_entries">查看 / 修改文件条目</button></div></div>
 <div class="action-group"><div class="action-caption">生成与导出</div><div class="action-row" role="group" aria-label="生成与导出"><button id="generate_mod" class="primary">生成翻译 Mod</button><button id="export_btn">导出中文 + 哈希 (.zip)</button></div></div>
@@ -410,9 +415,42 @@ dialog::backdrop{background:var(--backdrop)}
   <label for="import_provider">导入者名称（可留空自动命名）</label>
   <input id="import_provider" placeholder="例如：某汉化组、个人译者（留空将自动命名）">
   <div class="sub" style="margin-top:6px">提示：可留空自动命名，系统会按日期与序号自动生成来源名称（如「翻译-2026-10-17-1」）。</div>
+  <div class="cache-options" style="margin-top:12px;padding:10px 12px">
+    <div class="sub" style="margin-bottom:6px"><strong>外部译文术语表提取规则：</strong>若导入本程序导出的包（含 <code>.cache.json</code>），系统会直接从包内已有中英文对照（优先 &lt;5 个单词的短键值）自动提取成术语表，不消耗 Token。</div>
+    <label><input type="checkbox" id="import_extract_glossary_ai"> 若导入纯 <code>.yml</code> 文件，使用 AI 自动提取中文重复出现内容做术语表（备注：可能会消耗较多 Token）</label>
+  </div>
   <div class="row" style="margin-top:18px;justify-content:flex-end">
     <button id="cancel_import_step2">返回上一步</button>
     <button id="import_cache" class="primary">确认并导入</button>
+  </div>
+</dialog>
+
+<dialog id="glossary_dialog" aria-labelledby="glossary_dialog_title" style="max-width:780px;width:min(780px,calc(100vw - 24px))">
+  <div class="row"><h2 id="glossary_dialog_title" class="grow" style="margin:0">词云扫描与术语表工作台</h2><button type="button" id="close_glossary_dialog">关闭</button></div>
+  <div class="sub" style="margin-top:6px">翻译前先扫描英文生成高频词云：优先考虑少于 5 个单词的单独键值；也可开启长键值扫描或 AI 提取（备注：AI 提取/审批可能会花较多 Token）。勾选并确认译名后，将在正式翻译时注入提示词以统一全 Mod 译名。</div>
+  <div class="field-grid" style="margin-top:10px">
+    <div><label for="dialog_extract_mode">扫描与提取模式</label><select id="dialog_extract_mode"><option value="short_keys">1. 只扫短键值（&lt;5 个单词独立键值多次出现）</option><option value="long_extract">2. 在长键值中提取（短键值 + 长句高频词）</option><option value="ai_extract">3. AI 提取（备注：可能会花较多 Token）</option></select></div>
+    <div><label for="dialog_approval_mode">审批模式</label><select id="dialog_approval_mode"><option value="manual">手动勾选与编辑术语表</option><option value="ai_approve">AI 自动审批并补全译名（消耗 Token）</option></select></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button type="button" id="scan_glossary_now" class="scan-action">重新扫描英文词云</button>
+    <button type="button" id="ai_approve_glossary_now" class="ai-action">AI 自动审批补全译名</button>
+    <button type="button" id="browser_scan_glossary_now">浏览器本地引擎秒扫词云</button>
+    <span id="glossary_dialog_status" class="sub grow" role="status"></span>
+  </div>
+  <div class="sub" style="margin-top:10px;font-weight:600">高频词云预览（点击词条可快速启用/停用）：</div>
+  <div id="glossary_wordcloud" class="wordcloud-box"><div class="sub">尚未提取词云，请点击上方「重新扫描英文词云」。</div></div>
+  <div class="row" style="margin-top:10px">
+    <input id="new_glossary_term" class="grow" placeholder="手动添加英文术语（如 Galactic Empire）" style="width:auto">
+    <input id="new_glossary_trans" class="grow" placeholder="对应目标语言译名（如 银河帝国）" style="width:auto">
+    <button type="button" id="add_glossary_term_btn">添加术语</button>
+  </div>
+  <div class="glossary-table-wrap">
+    <table class="glossary-table"><thead><tr><th style="width:56px">启用</th><th>英文术语</th><th style="width:90px">频次 / 来源</th><th>目标译名（可修改）</th><th style="width:60px">操作</th></tr></thead><tbody id="glossary_table_rows"></tbody></table>
+  </div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end">
+    <button type="button" id="save_glossary_btn" class="primary">保存术语表设置</button>
+    <button type="button" id="save_and_translate_glossary_btn" class="ai-action">保存并开始正式翻译</button>
   </div>
 </dialog>
 
@@ -430,11 +468,34 @@ dialog::backdrop{background:var(--backdrop)}
       <select id="translate_provider_select" style="flex:1;max-width:300px"></select>
     </div>
   </div>
+  <div id="translate_workflow_box" class="cache-options" style="margin:10px 0">
+    <label for="confirm_workflow_mode" style="font-weight:600;margin-bottom:6px">选择本次翻译模式</label>
+    <select id="confirm_workflow_mode">
+      <option value="fast">1. 快速模式（无术语表 · 节省消耗）</option>
+      <option value="glossary">2. 术语表模式（统一高频术语译名）</option>
+    </select>
+    <div id="confirm_glossary_sub" hidden style="margin-top:8px">
+      <label for="confirm_extract_mode">术语表提取子模式</label>
+      <select id="confirm_extract_mode">
+        <option value="short_keys">1. 只扫短键值（优先 &lt;5 个单词的独立键值）</option>
+        <option value="long_extract">2. 在长键值中提取（短键值 + 长键值高频词）</option>
+        <option value="ai_extract">3. AI 提取（备注：可能会花较多 Token）</option>
+      </select>
+      <label for="confirm_approval_mode" style="margin-top:8px">术语审批方式</label>
+      <select id="confirm_approval_mode">
+        <option value="manual">先在界面展示词云/术语列表供勾选修改后再翻译</option>
+        <option value="ai_approve">AI 自动审批并直接开始翻译（备注：可能花较多 Token）</option>
+      </select>
+      <div class="row" style="margin-top:8px">
+        <button type="button" id="confirm_open_glossary_btn" class="scan-action" style="padding:6px 10px">先打开词云/术语表勾选修改</button>
+      </div>
+    </div>
+  </div>
   <p id="translate_note" class="sub" style="margin-top:1em"></p>
   <p id="translate_details" class="sub" style="white-space:pre-line;line-height:1.6;margin-top:0.5em"></p>
   <div class="row"><button id="cancel_translate_action">取消</button><button class="primary" id="confirm_translate_action">确认翻译</button></div>
 </dialog>
-<script src="/localization_ui.js"></script><script src="/vendor/gsap.min.js"></script><script src="/vendor/ScrollTrigger.min.js"></script><script>
+<script src="/localization_ui.js"></script><script src="/browser_translator.js"></script><script src="/vendor/gsap.min.js"></script><script src="/vendor/ScrollTrigger.min.js"></script><script>
 const token='__APP_TOKEN__';let state=null,selected=null,initialized=false,lastJob=null,steamWindow=null,activeGame=null,pickingImport=false;const games={st:'群星',hoi4:'钢铁雄心4',eu4:'欧陆风云4',ck3:'十字军之王3',vic3:'维多利亚3'};const $=id=>document.getElementById(id);
 
 function applyTheme(theme){
@@ -511,7 +572,7 @@ function renderMods(){
 function revealMods(){if(document.querySelector('.mod')&&window.gsap&&!matchMedia('(prefers-reduced-motion: reduce)').matches)gsap.fromTo('.mod',{opacity:0,y:5},{opacity:1,y:0,duration:.3,stagger:.025,overwrite:true});}
 
 function openSteam(mod){if(steamWindow&&!steamWindow.closed){try{steamWindow.location.href=mod.url;steamWindow.focus();return;}catch(e){}}steamWindow=window.open(mod.url,'WorkshopSteamPreview');if(!steamWindow)toast('浏览器阻止了 Steam 窗口，请允许本机页面打开弹出窗口。');}
-function renderSelection(){renderHistory();renderTaskLogs();if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent='在左侧选择一个 Mod，查看路径并开始翻译。';updateControls();return;}const cache=mod.cache_selection||{enabled:true,version_id:null,versions:[]};$('use_cache').checked=cache.enabled;$('cache_version').innerHTML='<option value="">最新缓存（默认）</option>'+(cache.versions||[]).map(v=>`<option value="${v.id}">版本 ${v.id} · ${escapeText(v.created_at)} · ${escapeText(v.provider||'历史备份')}</option>`).join('');$('cache_version').value=cache.version_id??'';$('cache_version').disabled=!cache.enabled||modBusy();$('cache_details').hidden=!cache.enabled;$('cache_note').textContent=(cache.enabled?'已启用所选缓存，切换使用此 Mod 的上次扫描结果；文件变化后请重新扫描。':'缓存复用已关闭：已缓存条目改为未翻译，保留本机已有中文。')+' 仅校验本机英文哈希，无法检查 Steam 尚未安装的更新。';$('translation_notice').textContent=state.demo?'演示模式：遵循缓存选项，使用固定示例译文，不访问 Steam 或付费模型。':(cache.enabled?'开始前自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目。':'缓存复用已关闭；保留本机已有中文，其余条目重新请求 AI 翻译。')+' 英文会发送到配置的模型接口，可能产生费用。完成后备份并回写；失败行保留英文。';$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>总条目</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>已翻译</span></div><div><b>${mod.counts.cached||0}</b><span>已缓存</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>未翻译</span></div><div><b>${mod.counts.needs_update||0}</b><span>需更新</span></div><div><b>${mod.counts.parse_errors||0}</b><span>格式错误</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||'暂无有效译文')}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);updateControls();}
+function renderSelection(){renderHistory();renderTaskLogs();if(window.syncEntryBrowser)window.syncEntryBrowser();const mod=state.mods.find(m=>m.id===selected);$('actions').hidden=!mod;if(!mod){$('selection').className='empty';$('selection').textContent='在左侧选择一个 Mod，查看路径并开始翻译。';updateControls();return;}const cache=mod.cache_selection||{enabled:true,version_id:null,versions:[]};$('use_cache').checked=cache.enabled;$('cache_version').innerHTML='<option value="">最新缓存（默认）</option>'+(cache.versions||[]).map(v=>`<option value="${v.id}">版本 ${v.id} · ${escapeText(v.created_at)} · ${escapeText(v.provider||'历史备份')}</option>`).join('');$('cache_version').value=cache.version_id??'';$('cache_version').disabled=!cache.enabled||modBusy();$('cache_details').hidden=!cache.enabled;$('cache_note').textContent=(cache.enabled?'已启用所选缓存，切换使用此 Mod 的上次扫描结果；文件变化后请重新扫描。':'缓存复用已关闭：已缓存条目改为未翻译，保留本机已有中文。')+' 仅校验本机英文哈希，无法检查 Steam 尚未安装的更新。';$('translation_notice').textContent=state.demo?'演示模式：遵循缓存选项，使用固定示例译文，不访问 Steam 或付费模型。':(cache.enabled?'开始前自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目。':'缓存复用已关闭；保留本机已有中文，其余条目重新请求 AI 翻译。')+' 英文会发送到配置的模型接口，可能产生费用。完成后备份并回写；失败行保留英文。';$('selection').className='';$('selection').innerHTML=`<h2>${escapeText(mod.title)}</h2><div class="sub">${escapeText(mod.game_title)} · UID ${escapeText(mod.uid)}</div><p class="path">${escapeText(mod.path)}</p><div class="sub">清单来源：${escapeText(mod.discovery_source||'历史记录，请刷新目录')}</div>${mod.steam_update_pending?'<div class="notice">Steam 清单显示有待安装更新。当前统计与翻译针对本机已安装版本，请先在 Steam 完成更新，再刷新目录和扫描此 Mod。</div>':''}${mod.counts&&!mod.counts.error?`<div class="translation-summary"><div class="translation-total"><b>${mod.counts.total}</b><span>总条目</span></div><div class="translation-counts"><div><b>${mod.counts.deployed??mod.counts.translated}</b><span>已翻译</span></div><div><b>${mod.counts.cached||0}</b><span>已缓存</span></div><div><b>${mod.counts.untranslated-(mod.counts.needs_update||0)}</b><span>未翻译</span></div><div><b>${mod.counts.needs_update||0}</b><span>需更新</span></div><div><b>${mod.counts.parse_errors||0}</b><span>格式错误</span></div></div></div><div class="sub">${escapeText(statsText(mod))}</div><div class="sub">已缓存：英文哈希匹配、尚未写入本机 Mod 的译文。格式报错条目单独统计，翻译时保留英文原行。</div><div class="sub" style="margin:12px 0">来源：${escapeText((mod.counts.origins||[]).map(o=>o.name+'（'+o.count+' 条）').join('、')||'暂无有效译文')}</div>`:`<div class="notice">${escapeText(statsText(mod))}</div>`}<button id="steam_preview">打开 Steam 网页窗口 ↗</button>`;$('steam_preview').onclick=()=>openSteam(mod);if(typeof syncGlossaryControls==='function')syncGlossaryControls();updateControls();}
 const expandedHistoryMods=new Set();
 function renderHistory(){const mod=state.mods.find(m=>m.id===selected);const ready=!!mod&&(state.analyzed_mod_ids||[]).includes(mod.id)&&mod.scan_state==='已扫描'&&!mod.counts?.error;$('history_panel').hidden=!ready;const entries=ready?(state.history||[]).filter(v=>v.mod_id===mod.id):[];if(!ready){$('history').innerHTML='';return;}$('nohistory').hidden=!!entries.length;$('nohistory').textContent='该 Mod 暂无历史备份；翻译完成后会自动保存在这里。';const groupsMap=new Map();for(const v of entries){if(!groupsMap.has(v.mod_id))groupsMap.set(v.mod_id,[]);groupsMap.get(v.mod_id).push(v);}const groups=Array.from(groupsMap.entries());$('history').innerHTML=groups.map(([modId,versions])=>{const latest=versions[0];const isOpen=expandedHistoryMods.has(modId);return `<details class="history-mod-group" data-history-mod="${escapeText(modId)}" ${isOpen?'open':''}><summary class="history-mod-summary"><div class="grow"><strong>${escapeText(latest.title)} · 翻译版本</strong><div class="row sub" style="margin-top:4px"><span>UID ${escapeText(latest.uid)}</span><span class="badge info">共 ${versions.length} 个版本</span><span class="badge ok">${escapeText(latest.status)}</span><span>最新备份：${escapeText(new Date(latest.created_at).toLocaleString())}</span></div></div></summary><div class="history-mod-versions"><table><thead><tr><th>翻译版本 / 来源</th><th>备份时间</th><th>状态</th><th>操作</th></tr></thead><tbody>${versions.map(v=>`<tr><td><strong>版本 #${v.version_id}</strong><br><span class="sub">来源：${escapeText(v.provider||'历史版本')}</span></td><td>${escapeText(new Date(v.created_at).toLocaleString())}</td><td><span class="badge ok">${escapeText(v.status)}</span></td><td><button data-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)||!state.mods.some(m=>m.id===v.mod_id)?'disabled':''}>一键复制中文文件</button> <button class="danger-action" data-delete-version="${v.version_id}" data-mod="${escapeText(v.mod_id)}" ${modBusy(modId)?'disabled':''}>删除缓存</button></td></tr>`).join('')}</tbody></table></div></details>`;}).join('');document.querySelectorAll('[data-history-mod]').forEach(d=>d.ontoggle=()=>{if(d.open)expandedHistoryMods.add(d.dataset.historyMod);else expandedHistoryMods.delete(d.dataset.historyMod);});document.querySelectorAll('[data-version]').forEach(b=>b.onclick=async()=>{const mod=state.mods.find(m=>m.id===b.dataset.mod);if(!await ask(`将此版本中文文件复制到「${mod.title}」的本机目录？\n${mod.path}\n已有同名文件会先备份。`))return;try{await api('restore',{id:b.dataset.mod,version_id:Number(b.dataset.version)});await refresh();}catch(e){toast(e.message);}});}
 document.addEventListener('click',async event=>{const button=event.target.closest('[data-delete-version]');if(!button)return;const version=state.history.find(v=>v.version_id===Number(button.dataset.deleteVersion)&&v.mod_id===button.dataset.mod);if(!version)return;if(!await ask(`删除「${version.title}」的缓存版本 #${version.version_id}？\n来源：${version.provider||'历史版本'}\n将永久删除此版本的 SQL 备份记录和仅由此版本保留的缓存映射。其他版本和本机中文文件保留。`,'确认删除缓存'))return;try{await api('delete-cache-version',{id:version.mod_id,version_id:version.version_id});await refresh();}catch(e){toast(e.message);}});
@@ -541,7 +602,135 @@ $('switch_profile').onclick=async()=>{const name=$('profile_select').value;if(!n
 $('aggregate_export').onchange=async()=>{const enabled=$('aggregate_export').checked;$('aggregate_export').disabled=true;try{await api('aggregate-config',{enabled});await refresh();toast(enabled?'自动生成已开启：每个 Mod 单独生成翻译补丁。':'自动生成已关闭，已有翻译 Mod 保留。');}catch(e){$('aggregate_export').checked=state.config.aggregate_export!==false;toast(e.message);}finally{$('aggregate_export').disabled=state.job.running;}};
 $('open_aggregate').onclick=async()=>{try{await api('open-aggregate',{});}catch(e){toast(e.message);}};
 $('scan').onclick=async()=>{try{await api('scan',{});await refresh();}catch(e){toast(e.message);}};
-$('translate').onclick=async()=>{if(window.startServerTranslation)return window.startServerTranslation();const mod=state.mods.find(m=>m.id===selected);if(!mod)return;const dialog=$('translate_confirmation');const useAICheckbox=$('translate_use_ai_checkbox');const providerSelect=$('translate_provider_select');const aiOptions=$('translate_ai_options');const modName=$('translate_mod_name');const note=$('translate_note');const details=$('translate_details');modName.textContent=`翻译「${mod.title}」`;useAICheckbox.checked=true;providerSelect.innerHTML='';if(state.profiles&&state.profiles.length>0){state.profiles.forEach(p=>{const opt=document.createElement('option');opt.value=p.name;opt.textContent=`${p.name} · ${p.model}${p.has_api_key?'':' · 未保存密钥'}`;providerSelect.appendChild(opt);});}else{const opt=document.createElement('option');opt.value='default';opt.textContent=state.config.provider||state.config.base_url||'当前配置';providerSelect.appendChild(opt);}function updateDialog(){const useAI=useAICheckbox.checked;aiOptions.hidden=!useAI;if(state.demo){note.textContent='演示模式：使用固定示例译文，不访问任何外部接口';details.textContent=`${mod.cache_selection?.enabled===false?'缓存复用已关闭，其余条目重新生成。':'自动整合所选匹配缓存。'}\n完成后备份并回写：${mod.path}`;}else if(useAI){note.textContent='自动整合已有中文和所选匹配缓存，只翻译缺失或原文变化的条目';details.textContent=`英文文本会发往 ${state.config.base_url}，可能产生费用\n完成后备份并回写（报错行保留英文）：${mod.path}`;}else{note.textContent='不勾选时，只导入缓存';details.textContent=`仅导入缓存和本机已有中文\n不调用任何 API，缺失条目保留英文\n完成后备份并回写：${mod.path}`;}}useAICheckbox.onchange=updateDialog;updateDialog();$('cancel_translate_action').onclick=()=>dialog.close();$('confirm_translate_action').onclick=async()=>{const useAI=useAICheckbox.checked;dialog.close();try{if(useAI){await api('translate',{id:selected,use_ai:true});}else{await api('apply_cache_only',{id:selected});}await refresh();}catch(e){toast(e.message);}};dialog.oncancel=()=>{};dialog.showModal();};
+let currentGlossaryTerms=[];
+function syncGlossaryControls(){
+  const mod=state?.mods.find(m=>m.id===selected);
+  const gs=mod?.glossary_settings||{workflow_mode:'fast',extract_mode:'short_keys',approval_mode:'manual',total_terms:0,active_terms:0};
+  if($('workflow_mode')){
+    $('workflow_mode').value=gs.workflow_mode||'fast';
+    $('glossary_options').hidden=$('workflow_mode').value!=='glossary';
+    $('glossary_extract_mode').value=gs.extract_mode||'short_keys';
+    $('glossary_approval_mode').value=gs.approval_mode||'manual';
+    $('glossary_token_warning').hidden=!($('glossary_extract_mode').value==='ai_extract'||$('glossary_approval_mode').value==='ai_approve');
+    $('glossary_summary_badge').textContent=`已存术语 ${gs.total_terms||0} 条 · 已启用译名 ${gs.active_terms||0} 条`;
+  }
+}
+$('workflow_mode').onchange=async()=>{
+  $('glossary_options').hidden=$('workflow_mode').value!=='glossary';
+  if(selected){try{await api('glossary-save',{id:selected,workflow_mode:$('workflow_mode').value,extract_mode:$('glossary_extract_mode').value,approval_mode:$('glossary_approval_mode').value});await refresh();}catch(e){toast(e.message);}}
+};
+$('glossary_extract_mode').onchange=async()=>{
+  $('glossary_token_warning').hidden=!($('glossary_extract_mode').value==='ai_extract'||$('glossary_approval_mode').value==='ai_approve');
+  if(selected){try{await api('glossary-save',{id:selected,workflow_mode:$('workflow_mode').value,extract_mode:$('glossary_extract_mode').value,approval_mode:$('glossary_approval_mode').value});await refresh();}catch(e){toast(e.message);}}
+};
+$('glossary_approval_mode').onchange=async()=>{
+  $('glossary_token_warning').hidden=!($('glossary_extract_mode').value==='ai_extract'||$('glossary_approval_mode').value==='ai_approve');
+  if(selected){try{await api('glossary-save',{id:selected,workflow_mode:$('workflow_mode').value,extract_mode:$('glossary_extract_mode').value,approval_mode:$('glossary_approval_mode').value});await refresh();}catch(e){toast(e.message);}}
+};
+function renderGlossaryDialog(){
+  const cloud=$('glossary_wordcloud'), tbody=$('glossary_table_rows');
+  if(!currentGlossaryTerms.length){
+    cloud.innerHTML='<div class="sub">尚未提取术语。点击上方「重新扫描英文词云」或「浏览器本地引擎秒扫词云」即可生成。</div>';
+    tbody.innerHTML='<tr><td colspan="5" class="sub" style="text-align:center">暂无术语条目</td></tr>';
+    return;
+  }
+  cloud.innerHTML=currentGlossaryTerms.slice(0,80).map((t,idx)=>{
+    const size=Math.min(16,11+Math.log2((t.count||1)+1));
+    return `<span class="wordcloud-chip" data-cloud-idx="${idx}" data-active="${Boolean(t.enabled)}" style="font-size:${size.toFixed(1)}px">${escapeText(t.term)}${t.translation?' → '+escapeText(t.translation):''}<small>×${t.count||1}</small></span>`;
+  }).join('');
+  cloud.querySelectorAll('[data-cloud-idx]').forEach(chip=>chip.onclick=()=>{
+    const idx=Number(chip.dataset.cloudIdx);
+    currentGlossaryTerms[idx].enabled=!currentGlossaryTerms[idx].enabled;
+    renderGlossaryDialog();
+  });
+  tbody.innerHTML=currentGlossaryTerms.map((t,idx)=>`<tr>
+    <td><input type="checkbox" data-g-enable="${idx}" ${t.enabled?'checked':''} style="width:auto"></td>
+    <td><strong>${escapeText(t.term)}</strong><div class="sub">${escapeText(t.note||'')}</div></td>
+    <td><span class="badge info">×${t.count||1}</span><div class="sub">${escapeText(t.source_mode||'short_keys')}</div></td>
+    <td><input type="text" data-g-trans="${idx}" value="${escapeText(t.translation||'')}" placeholder="输入或由 AI 审批生成译名"></td>
+    <td><button type="button" data-g-del="${idx}" style="padding:4px 8px">删除</button></td>
+  </tr>`).join('');
+  tbody.querySelectorAll('[data-g-enable]').forEach(cb=>cb.onchange=()=>{currentGlossaryTerms[Number(cb.dataset.gEnable)].enabled=cb.checked;renderGlossaryDialog();});
+  tbody.querySelectorAll('[data-g-trans]').forEach(inp=>inp.oninput=()=>{const i=Number(inp.dataset.gTrans);currentGlossaryTerms[i].translation=inp.value;currentGlossaryTerms[i].approved=Boolean(inp.value.trim());});
+  tbody.querySelectorAll('[data-g-del]').forEach(btn=>btn.onclick=()=>{currentGlossaryTerms.splice(Number(btn.dataset.gDel),1);renderGlossaryDialog();});
+}
+async function openGlossaryDialog(){
+  if(!selected){toast('请先在左侧选择一个 Mod');return;}
+  $('dialog_extract_mode').value=$('glossary_extract_mode').value||'short_keys';
+  $('dialog_approval_mode').value=$('glossary_approval_mode').value||'manual';
+  $('glossary_dialog_status').textContent='正在读取术语表…';
+  $('glossary_dialog').showModal();
+  try{
+    const res=await api('glossary',{id:selected});
+    currentGlossaryTerms=res.terms||[];
+    $('glossary_dialog_status').textContent=`已加载 ${currentGlossaryTerms.length} 条术语`;
+    renderGlossaryDialog();
+  }catch(e){$('glossary_dialog_status').textContent=e.message;}
+}
+$('open_glossary_btn').onclick=openGlossaryDialog;
+$('close_glossary_dialog').onclick=()=>$('glossary_dialog').close();
+$('add_glossary_term_btn').onclick=()=>{
+  const term=$('new_glossary_term').value.trim(), trans=$('new_glossary_trans').value.trim();
+  if(!term){toast('请输入英文术语');return;}
+  currentGlossaryTerms.unshift({term,translation:trans,count:1,source_mode:'manual',enabled:true,approved:Boolean(trans),note:'手动添加'});
+  $('new_glossary_term').value='';$('new_glossary_trans').value='';
+  renderGlossaryDialog();
+};
+$('scan_glossary_now').onclick=async()=>{
+  if(!selected)return;
+  $('scan_glossary_now').disabled=true;
+  const ex=$('dialog_extract_mode').value, ap=$('dialog_approval_mode').value;
+  $('glossary_dialog_status').textContent=ex==='ai_extract'||ap==='ai_approve'?'正在扫描并调用 AI 提取/审批术语（可能消耗较多 Token）…':'正在扫描英文词云…';
+  try{
+    const body={id:selected,extract_mode:ex,approval_mode:ap};
+    if(window.serverWorkshopLinks){body.api={base_url:$('base_url').value.trim(),model:$('model').value.trim(),api_key:$('api_key').value.trim(),batch_size:Number($('batch_size').value),concurrency:Number($('concurrency').value)};}
+    const res=await api('glossary-scan',body);
+    currentGlossaryTerms=res.terms||[];
+    $('glossary_extract_mode').value=ex;$('glossary_approval_mode').value=ap;$('workflow_mode').value='glossary';
+    renderGlossaryDialog();
+    $('glossary_dialog_status').textContent=`扫描完成：共提取 ${currentGlossaryTerms.length} 条高频术语`;
+    await refresh();
+  }catch(e){$('glossary_dialog_status').textContent=e.message;}
+  finally{$('scan_glossary_now').disabled=false;}
+};
+$('ai_approve_glossary_now').onclick=async()=>{
+  $('dialog_approval_mode').value='ai_approve';
+  await $('scan_glossary_now').onclick();
+};
+$('browser_scan_glossary_now').onclick=async()=>{
+  if(!selected||!window.ParadoxBrowserEngine)return;
+  $('glossary_dialog_status').textContent='正在使用浏览器端 JS/TS 引擎本地计算词云（零服务器内存消耗）…';
+  try{
+    const page=await api('entries',{id:selected,status:'all',query:'',page:1,page_size:200});
+    const ex=$('dialog_extract_mode').value==='long_extract'?'long_extract':'short_keys';
+    let terms=window.ParadoxBrowserEngine.extractGlossaryCandidates(page.entries||[],{},ex,2,300);
+    if(!terms.length&&(page.entries||[]).length){terms=window.ParadoxBrowserEngine.extractGlossaryCandidates(page.entries||[],{},ex,1,300);}
+    currentGlossaryTerms=terms;
+    renderGlossaryDialog();
+    $('glossary_dialog_status').textContent=`浏览器端引擎扫描完成：提取 ${terms.length} 条候选术语（未消耗服务器内存）`;
+  }catch(e){$('glossary_dialog_status').textContent=e.message;}
+};
+$('save_glossary_btn').onclick=async()=>{
+  if(!selected)return;
+  try{
+    await api('glossary-save',{id:selected,terms:currentGlossaryTerms,workflow_mode:'glossary',extract_mode:$('dialog_extract_mode').value,approval_mode:$('dialog_approval_mode').value});
+    $('workflow_mode').value='glossary';
+    $('glossary_dialog').close();
+    await refresh();
+    toast(`已保存术语表（共 ${currentGlossaryTerms.length} 条）并开启术语表翻译模式`);
+  }catch(e){toast(e.message);}
+};
+$('save_and_translate_glossary_btn').onclick=async()=>{
+  if(!selected)return;
+  try{
+    await api('glossary-save',{id:selected,terms:currentGlossaryTerms,workflow_mode:'glossary',extract_mode:$('dialog_extract_mode').value,approval_mode:$('dialog_approval_mode').value});
+    $('workflow_mode').value='glossary';
+    $('glossary_dialog').close();
+    await refresh();
+    $('translate').click();
+  }catch(e){toast(e.message);}
+};
+$('translate').onclick=async()=>{if(window.startServerTranslation)return window.startServerTranslation();const mod=state.mods.find(m=>m.id===selected);if(!mod)return;const dialog=$('translate_confirmation');const useAICheckbox=$('translate_use_ai_checkbox');const providerSelect=$('translate_provider_select');const aiOptions=$('translate_ai_options');const modName=$('translate_mod_name');const note=$('translate_note');const details=$('translate_details');modName.textContent=`翻译「${mod.title}」`;useAICheckbox.checked=true;$('confirm_workflow_mode').value=$('workflow_mode').value||'fast';$('confirm_extract_mode').value=$('glossary_extract_mode').value||'short_keys';$('confirm_approval_mode').value=$('glossary_approval_mode').value||'manual';providerSelect.innerHTML='';if(state.profiles&&state.profiles.length>0){state.profiles.forEach(p=>{const opt=document.createElement('option');opt.value=p.name;opt.textContent=`${p.name} · ${p.model}${p.has_api_key?'':' · 未保存密钥'}`;providerSelect.appendChild(opt);});}else{const opt=document.createElement('option');opt.value='default';opt.textContent=state.config.provider||state.config.base_url||'当前配置';providerSelect.appendChild(opt);}function updateDialog(){const useAI=useAICheckbox.checked;const wf=$('confirm_workflow_mode').value;const ex=$('confirm_extract_mode').value;const ap=$('confirm_approval_mode').value;aiOptions.hidden=!useAI;$('translate_workflow_box').hidden=!useAI;$('confirm_glossary_sub').hidden=!useAI||wf!=='glossary';const tokenWarn=(wf==='glossary'&&(ex==='ai_extract'||ap==='ai_approve'))?'\n注意：当前所选 AI 提取/自动审批术语表会额外消耗较多 Token。':'';if(state.demo){note.textContent='演示模式：使用固定示例译文，不访问任何外部接口';details.textContent=`${mod.cache_selection?.enabled===false?'缓存复用已关闭，其余条目重新生成。':'自动整合所选匹配缓存。'}\n翻译模式：${wf==='glossary'?'术语表模式（'+ex+'）':'快速模式（无术语表）'}\n完成后备份并回写：${mod.path}`;}else if(useAI){note.textContent=wf==='glossary'?'术语表模式：按高频术语表统一全 Mod 译名':'快速模式：无术语表，节省 Token 消耗';details.textContent=`英文文本会发往 ${state.config.base_url}，可能产生费用${tokenWarn}\n完成后备份并回写（报错行保留英文）：${mod.path}`;}else{note.textContent='不勾选时，只导入缓存';details.textContent=`仅导入缓存和本机已有中文\n不调用任何 API，缺失条目保留英文\n完成后备份并回写：${mod.path}`;}}useAICheckbox.onchange=updateDialog;$('confirm_workflow_mode').onchange=updateDialog;$('confirm_extract_mode').onchange=updateDialog;$('confirm_approval_mode').onchange=updateDialog;$('confirm_open_glossary_btn').onclick=()=>{dialog.close();openGlossaryDialog();};updateDialog();$('cancel_translate_action').onclick=()=>dialog.close();$('confirm_translate_action').onclick=async()=>{const useAI=useAICheckbox.checked;const wf=$('confirm_workflow_mode').value;const ex=$('confirm_extract_mode').value;const ap=$('confirm_approval_mode').value;dialog.close();try{if(useAI){await api('translate',{id:selected,use_ai:true,workflow_mode:wf,extract_mode:ex,approval_mode:ap});}else{await api('apply_cache_only',{id:selected});}await refresh();}catch(e){toast(e.message);}};dialog.oncancel=()=>{};dialog.showModal();};
 
 $('analyze').onclick=async()=>{try{await api('analyze',{id:selected});await refresh();}catch(e){toast(e.message);}};
 async function changeCache(){if(!selected)return;try{await api('cache-selection',{id:selected,enabled:$('use_cache').checked,version_id:$('cache_version').value?Number($('cache_version').value):null});await refresh();}catch(e){toast(e.message);renderSelection();}}
@@ -599,11 +788,12 @@ $('import_cache').onclick=async()=>{
   const path=$('import_path').value.trim();
   if(!path){toast('请先选择文件或文件夹');return;}
   const provider=$('import_provider').value.trim();
+  const extractGlossaryAi=Boolean($('import_extract_glossary_ai')?.checked);
   $('import_step2_dialog').close();
   try{
-    await api('import',{id:selected,path,provider});
+    await api('import',{id:selected,path,provider,extract_glossary_ai:extractGlossaryAi});
     await refresh();
-    toast(`导入任务已启动（来源：${provider||'自动命名'}）。带哈希缓存仅校验本机英文；无哈希中文文件请确认来源版本。`);
+    toast(`导入任务已启动（来源：${provider||'自动命名'}）。导出包将自动提取术语表${extractGlossaryAi?'；纯 YML 已开启 AI 提取高频中文术语':''}。`);
   }catch(e){toast(e.message);}
 };
 

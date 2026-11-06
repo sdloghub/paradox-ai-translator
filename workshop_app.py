@@ -26,7 +26,7 @@ import webbrowser
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-APP_VERSION = '2026.10.23-terminal.1'
+APP_VERSION = '2026.11.06-glossary.1'
 
 
 def program_directory():
@@ -278,7 +278,9 @@ class WorkshopService:
                 originals BLOB NOT NULL, chinese BLOB NOT NULL)''')
         self.database.chmod(0o600)
         from translation_cache import ModCache
+        from glossary import GlossaryManager
         self.cache = ModCache(self)
+        self.glossary = GlossaryManager(self)
         if self.target_language == 'zh-CN':
             self.load_completed_seed()
         if demo:
@@ -890,12 +892,15 @@ class WorkshopService:
 
     def analyze(self, identifier):
         from translation_cache import candidates
+        from glossary import check_server_memory_limit
         item = self.get_mod(identifier)
         sources = self.original_sources(item)
+        check_server_memory_limit(self, sources=sources, stage='扫描')
         imported = self.cache.import_candidates(item, sources, candidates(item['path'], item['game']), '本机中文') if self.target_language != 'zh-TW' else {'imported': 0, 'rejected': 0}
         self.cache.sync_workspace(item, sources, collect=False)
         item['cache_selection'] = self.cache.selection(identifier)
         item['counts'] = self.cache.stats(item, sources)
+        item['glossary_settings'] = self.glossary.settings(identifier)
         item['scan_state'] = '已扫描'
         self.inventory[identifier] = item
         self.log(f"{item['title']}：已翻译 {item['counts']['deployed']} / 已缓存 {item['counts']['cached']} / 待翻译 {item['counts']['untranslated']} / 格式报错 {item['counts']['parse_errors']} 行")
@@ -905,22 +910,79 @@ class WorkshopService:
         self.persist_item(item, stamp)
         self.save_completed()
         self.analyzed_mod_ids.add(identifier)
-        return {**item['counts'], **imported}
+        return {**item['counts'], **imported, 'glossary_settings': item['glossary_settings']}
 
-    def import_cache(self, identifier, path, provider=""):
-        from translation_cache import candidates
+    def glossary_state(self, identifier):
+        item = self.get_mod(identifier)
+        settings = self.glossary.settings(identifier)
+        item['glossary_settings'] = settings
+        return {'terms': self.glossary.list_terms(identifier), 'settings': settings}
+
+    def scan_glossary(self, identifier, extract_mode='short_keys', approval_mode='manual', min_count=2):
+        item = self.get_mod(identifier)
+        result = self.glossary.scan_and_extract(
+            item, extract_mode=extract_mode, approval_mode=approval_mode,
+            min_count=int(min_count or 2), config=self.config()
+        )
+        item['glossary_settings'] = result['settings']
+        self.persist_item(item)
+        return result
+
+    def save_glossary(self, identifier, terms=None, workflow_mode=None, extract_mode=None, approval_mode=None):
+        item = self.get_mod(identifier)
+        if terms is not None:
+            self.glossary.replace_terms(identifier, terms, merge=False)
+        settings = self.glossary.save_settings(identifier, workflow_mode=workflow_mode,
+                                               extract_mode=extract_mode, approval_mode=approval_mode)
+        item['glossary_settings'] = settings
+        self.persist_item(item)
+        return {'terms': self.glossary.list_terms(identifier), 'settings': settings}
+
+    def import_cache(self, identifier, path, provider="", extract_glossary_ai=False):
+        from translation_cache import inspect_import_source, entries as parse_entries
+        from glossary import check_server_memory_limit, extract_glossary_from_package_pairs, extract_chinese_repeats_from_yml
         item = self.get_mod(identifier)
         chosen = Path(path).expanduser()
         if not chosen.exists():
             raise ValueError('所选文件或目录不存在')
         sources = self.original_sources(item)
-        translations = candidates(chosen, item['game'])
-        if not translations:
+        check_server_memory_limit(self, sources=sources, stage='导入')
+        inspected = inspect_import_source(chosen, item['game'])
+        translations = inspected['candidates']
+        if not translations and not inspected['embedded_glossary']:
             raise ValueError('未找到当前目标语言的有效译文，请检查文件内容和语言选择')
         label = self.source_label('导入', provider)
-        result = self.cache.import_candidates(item, sources, translations, '导入 · ' + label)
+        result = self.cache.import_candidates(item, sources, translations, '导入 · ' + label) if translations else {'imported': 0, 'rejected': 0, 'accepted': 0}
+        # Extract glossary according to import source type:
+        # 1. Exported package (.cache.json / glossary.json): directly extract glossary (<5 words short keys + embedded glossary)
+        # 2. Pure YML file: if extract_glossary_ai is enabled by user, use AI to extract repeated Chinese terms as glossary
+        glossary_extracted = 0
+        source_entries = parse_entries(sources, item['game'], strict=False)
+        if inspected['is_exported_package']:
+            pkg_terms = list(inspected['embedded_glossary'])
+            pair_terms = extract_glossary_from_package_pairs(
+                source_entries, translations, target_language=self.target_language,
+                server_mode=bool(getattr(self, 'server_mode', False))
+            )
+            merged_terms = pair_terms + pkg_terms
+            if merged_terms:
+                saved_terms = self.glossary.replace_terms(identifier, merged_terms, merge=True)
+                glossary_extracted = len(merged_terms)
+                self.log(f'已从本程序导出的翻译包中直接提取术语表：{len(saved_terms)} 条')
+        elif inspected['is_pure_yml'] and extract_glossary_ai:
+            ai_terms = extract_chinese_repeats_from_yml(
+                source_entries, inspected['yml_entries'], item['game'],
+                config=self.config(), demo=self.demo,
+                server_mode=bool(getattr(self, 'server_mode', False)), log=self.log
+            )
+            if ai_terms:
+                saved_terms = self.glossary.replace_terms(identifier, ai_terms, merge=True)
+                glossary_extracted = len(ai_terms)
+                self.log(f'已通过 AI 从导入的纯 YML 文件中提取高频中文术语表：{len(saved_terms)} 条')
+        item['glossary_settings'] = self.glossary.settings(identifier)
         if not result['accepted']:
             return {**result, **self.cache.stats(item, sources), 'provider': label,
+                    'glossary_extracted': glossary_extracted, 'glossary_settings': item['glossary_settings'],
                     'version_id': None, 'warning': '没有匹配当前 Mod 原文的有效译文，未生成缓存版本'}
         # An explicit import should become usable even after cache opt-out/history selection.
         self.cache.select(identifier, True)
@@ -937,13 +999,14 @@ class WorkshopService:
             version = cursor.lastrowid
         item['cache_selection'] = self.cache.selection(identifier)
         item['translated'] = True
-        self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条")
+        self.log(f"导入完成：新增 {result['imported']} 条，跳过不匹配或冲突 {result['rejected']} 条" + (f"，提取术语 {glossary_extracted} 条" if glossary_extracted else ""))
         warning = '导入缓存无法检查 Steam 上尚未安装的原文更新；仅校验本机英文。无原文哈希的中文文件无法判断是否需要更新，请确认来源版本。'
         self.log(warning)
         self.persist_item(item)
         self.save_completed()
         self.analyzed_mod_ids.add(identifier)
-        return {**result, **item['counts'], 'provider': label, 'warning': warning, 'version_id': version}
+        return {**result, **item['counts'], 'provider': label, 'warning': warning, 'version_id': version,
+                'glossary_extracted': glossary_extracted, 'glossary_settings': item['glossary_settings']}
 
     def export_package(self, identifier):
         item = self.get_mod(identifier)
@@ -1101,7 +1164,8 @@ class WorkshopService:
         }
 
 
-    def translate(self, identifier, translator=None, deploy=True, provider=None, use_ai=True):
+    def translate(self, identifier, translator=None, deploy=True, provider=None, use_ai=True,
+                  workflow_mode=None, extract_mode=None, approval_mode=None):
         item = self.get_mod(identifier)
         self.analyze(identifier)
         config = self.config()
@@ -1114,9 +1178,28 @@ class WorkshopService:
             import request
         except ImportError as error:
             raise RuntimeError('请先运行启动脚本安装依赖，或安装 requirements.txt') from error
+        g_settings = self.glossary.settings(identifier)
+        wf_mode = workflow_mode or g_settings['workflow_mode']
+        ex_mode = extract_mode or g_settings['extract_mode']
+        ap_mode = approval_mode or g_settings['approval_mode']
+        if workflow_mode or extract_mode or approval_mode:
+            g_settings = self.glossary.save_settings(identifier, workflow_mode=wf_mode,
+                                                     extract_mode=ex_mode, approval_mode=ap_mode)
+            item['glossary_settings'] = g_settings
+        active_glossary = {}
+        if use_ai and wf_mode == 'glossary':
+            existing_terms = self.glossary.list_terms(identifier)
+            if not existing_terms or ap_mode == 'ai_approve':
+                self.log(f'正在执行翻译前术语表扫描（提取方式：{ex_mode}，审批方式：{ap_mode}）…')
+                self.glossary.scan_and_extract(item, extract_mode=ex_mode, approval_mode=ap_mode, config=config)
+            active_glossary = self.glossary.active_glossary_map(identifier)
+            self.log(f'已启用术语表翻译模式（当前生效术语：{len(active_glossary)} 条）')
+        elif use_ai:
+            self.log('已启用快速翻译模式（无术语表，节省 Token 消耗）')
         if use_ai and translator is None:
             translator = partial(request.request_deepseek_batch, config=config,
-                                 batch_size=config['batch_size'], pool_size=config['concurrency'], progress=self.log)
+                                 batch_size=config['batch_size'], pool_size=config['concurrency'],
+                                 progress=self.log, glossary=active_glossary)
         label = (self.source_label('AI', config.get('provider', '') if provider is None else provider) if use_ai and item['counts']['untranslated'] else '缓存复用')
         sources = self.original_sources(item)
         if not sources:
@@ -1161,7 +1244,7 @@ class WorkshopService:
                 self.log(f'文件 {index}/{len(sources)}：{name}')
                 relative = Path(item['game']) / name
                 file_issues = []
-                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues, duplicate_keys=duplicate_keys, shared_translations=shared_translations)
+                failures += paradox.translate_para(relative, item['game'], staging, project_root=workspace, translator=translator, issues=file_issues, duplicate_keys=duplicate_keys, shared_translations=shared_translations, glossary=active_glossary)
                 issues.extend({**problem, 'file': name, 'original_file': str(Path(item['path']) / name)} for problem in file_issues)
                 output = staging / paradox.output_name(relative, item['game'])
                 data = output.read_bytes()
@@ -1648,6 +1731,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, (ROOT / 'entry_browser_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
         if self.path == '/tutorial_ui.js':
             return self.send(200, (ROOT / 'tutorial_ui.js').read_bytes(), 'text/javascript; charset=utf-8')
+        if self.path in ('/browser_translator.js', '/browser_translator.ts'):
+            return self.send(200, (ROOT / self.path.lstrip('/')).read_bytes(), 'text/javascript; charset=utf-8')
         if not self.authorized():
             return self.send(403, {'error': '访问令牌无效'})
         if self.path == '/api/state':
@@ -1741,6 +1826,7 @@ class Handler(BaseHTTPRequestHandler):
                 identifier = query.get('id', [''])[0]
                 provider = query.get('provider', [''])[0]
                 filename = query.get('filename', ['import.zip'])[0]
+                extract_glossary_ai = query.get('extract_glossary_ai', ['0'])[0] in ('1', 'true', 'True')
                 if not identifier:
                     raise ValueError('请先选择 Mod')
                 service.get_mod(identifier)
@@ -1763,7 +1849,7 @@ class Handler(BaseHTTPRequestHandler):
                         temp_path = temp.name
                 def do_import():
                     try:
-                        return service.import_cache(identifier, temp_path, provider)
+                        return service.import_cache(identifier, temp_path, provider, extract_glossary_ai=extract_glossary_ai)
                     finally:
                         if saved is None:
                             Path(temp_path).unlink(missing_ok=True)
@@ -1835,8 +1921,9 @@ class Handler(BaseHTTPRequestHandler):
                 from server_upload import saved_translation
                 metadata, path = saved_translation(service, body.get('upload_id'))
                 identifier = body['id']
+                extract_glossary_ai = bool(body.get('extract_glossary_ai', False))
                 service.get_mod(identifier)
-                job_id = service.start('import', lambda: service.import_cache(identifier, path, metadata.get('provider', '')), identifier)
+                job_id = service.start('import', lambda: service.import_cache(identifier, path, metadata.get('provider', ''), extract_glossary_ai=extract_glossary_ai), identifier)
                 return self.send(202, {'ok': True, 'job_id': job_id, 'saved_upload': metadata})
             if getattr(service, 'server_mode', False):
                 if self.path in ('/api/open', '/api/open-aggregate', '/api/open-generated-mod', '/api/pick-file', '/api/pick-folder'):
@@ -1914,15 +2001,48 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, service.save_config(body))
             if self.path == '/api/scan':
                 service.start('scan', service.scan)
+            elif self.path == '/api/glossary':
+                return self.send(200, service.glossary_state(body['id']))
+            elif self.path == '/api/glossary-save':
+                with service.operation('glossary-save', body['id']):
+                    result = service.save_glossary(
+                        body['id'],
+                        terms=body.get('terms'),
+                        workflow_mode=body.get('workflow_mode'),
+                        extract_mode=body.get('extract_mode'),
+                        approval_mode=body.get('approval_mode'),
+                    )
+                return self.send(200, result)
+            elif self.path == '/api/glossary-scan':
+                identifier = body['id']
+                service.get_mod(identifier)
+                extract_mode = body.get('extract_mode', 'short_keys')
+                approval_mode = body.get('approval_mode', 'manual')
+                min_count = int(body.get('min_count', 2) or 2)
+                config = None
+                if getattr(service, 'server_mode', False) and (extract_mode == 'ai_extract' or approval_mode == 'ai_approve') and not service.demo:
+                    from server_sessions import transient_config
+                    config = transient_config(service, body.get('api', {}))
+                with service.operation('glossary-scan', identifier):
+                    if config is not None:
+                        service.task_context.config = config
+                    result = service.scan_glossary(identifier, extract_mode=extract_mode, approval_mode=approval_mode, min_count=min_count)
+                return self.send(200, result)
             elif self.path == '/api/translate':
                 identifier = body['id']
                 service.get_mod(identifier)
                 use_ai = body.get('use_ai', True)
+                workflow_mode = body.get('workflow_mode')
+                extract_mode = body.get('extract_mode')
+                approval_mode = body.get('approval_mode')
                 config = None
                 if getattr(service, 'server_mode', False):
                     from server_sessions import transient_config
                     config = transient_config(service, body.get('api', {}))
-                service.start('translate', lambda: service.translate(identifier, use_ai=use_ai), identifier, config_override=config)
+                service.start('translate', lambda: service.translate(
+                    identifier, use_ai=use_ai, workflow_mode=workflow_mode,
+                    extract_mode=extract_mode, approval_mode=approval_mode
+                ), identifier, config_override=config)
             elif self.path == '/api/apply_cache_only':
                 identifier = body['id']
                 service.get_mod(identifier)
@@ -1949,10 +2069,11 @@ class Handler(BaseHTTPRequestHandler):
                 service.start('clear-translations', lambda: service.clear_translations(identifier), identifier)
             elif self.path == '/api/import':
                 identifier, chosen, provider = body['id'], body['path'], body.get('provider', '')
+                extract_glossary_ai = bool(body.get('extract_glossary_ai', False))
                 if getattr(service, 'server_mode', False) and not Path(chosen).resolve().is_relative_to(service.data_dir):
                     raise ValueError('仅可导入当前工作区中的文件')
                 service.get_mod(identifier)
-                service.start('import', lambda: service.import_cache(identifier, chosen, provider), identifier)
+                service.start('import', lambda: service.import_cache(identifier, chosen, provider, extract_glossary_ai=extract_glossary_ai), identifier)
             elif self.path == '/api/export':
                 item = service.get_mod(body['id'])
                 if body.get('format') == 'zip':
