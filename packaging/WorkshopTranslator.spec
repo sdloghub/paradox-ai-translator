@@ -14,7 +14,8 @@ analysis = Analysis(
     noarchive=False,
 )
 pyz = PYZ(analysis.pure)
-options = dict(name='WorkshopTranslator', icon=str(root / 'assets/app-icon.ico'), debug=False,
+icon_path = str(root / 'assets/app-icon.ico') if os.name == 'nt' else None
+options = dict(name='WorkshopTranslator', icon=icon_path, debug=False,
                bootloader_ignore_signals=False, strip=False, upx=False, console=True)
 if os.environ.get('WORKSHOP_BUILD_MODE') == 'onefile':
     exe = EXE(pyz, analysis.scripts, analysis.binaries, analysis.datas, [], **options)

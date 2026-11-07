@@ -41,6 +41,10 @@ def main():
         shutil.rmtree(app)
     subprocess.run(['/usr/bin/ditto', str(ROOT / 'dist/WorkshopTranslator.app'), str(app)], check=True)
     shutil.copy2(ROOT / 'introduction.md', destination / 'introduction.md')
+    if (ROOT / 'setup_mac.command').is_file():
+        shutil.copy2(ROOT / 'setup_mac.command', destination / 'setup_mac.command')
+    if (ROOT / 'tutorials').is_dir():
+        shutil.copytree(ROOT / 'tutorials', destination / 'tutorials', dirs_exist_ok=True)
     # Refresh bundled templates without overwriting any existing portable settings.
     for name, payload in release_settings().items():
         target = destination / name

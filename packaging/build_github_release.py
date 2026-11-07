@@ -49,6 +49,13 @@ def validate_bundle(path, platform):
             checksum = archive.read('WorkshopTranslator/SHA256SUMS.txt').decode().split()[0]
             if hashlib.sha256(exe).hexdigest() != checksum:
                 raise ValueError('Windows 可执行文件校验失败')
+        elif platform == 'linux-x64':
+            exe = archive.read('WorkshopTranslator/WorkshopTranslator')
+            if not exe.startswith(b'\x7fELF'):
+                raise ValueError('Linux 可执行文件无效')
+            checksum = archive.read('WorkshopTranslator/SHA256SUMS.txt').decode().split()[0]
+            if hashlib.sha256(exe).hexdigest() != checksum:
+                raise ValueError('Linux 可执行文件校验失败')
         elif not any(name.endswith('.app/Contents/MacOS/WorkshopTranslator') for name in names):
             raise ValueError('缺少 Mac 可执行文件')
 
@@ -58,11 +65,17 @@ def build(version, commit, artifacts, destination):
     destination.mkdir(parents=True, exist_ok=True)
     bundles = list(artifacts.rglob('WorkshopTranslator-Windows.zip'))
     bundles += list(artifacts.rglob('WorkshopTranslator-macOS-*.zip'))
-    if len(bundles) != 2:
-        raise ValueError('必须包含恰好一个 Windows 和一个 macOS 发行包')
+    bundles += list(artifacts.rglob('WorkshopTranslator-Linux.zip'))
+    if not bundles:
+        raise ValueError('未找到发行包')
     assets = []
     for bundle in bundles:
-        platform = 'windows-x64' if bundle.name == 'WorkshopTranslator-Windows.zip' else bundle.stem.removeprefix('WorkshopTranslator-').lower()
+        if bundle.name == 'WorkshopTranslator-Windows.zip':
+            platform = 'windows-x64'
+        elif bundle.name == 'WorkshopTranslator-Linux.zip':
+            platform = 'linux-x64'
+        else:
+            platform = bundle.stem.removeprefix('WorkshopTranslator-').lower()
         validate_bundle(bundle, platform)
         target = destination / f'WorkshopTranslator-{version}-{platform}.zip'
         shutil.copy2(bundle, target)

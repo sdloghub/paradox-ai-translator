@@ -16,6 +16,8 @@ jobs:
             platform: windows-x64
           - os: macos-15
             platform: macos
+          - os: ubuntu-latest
+            platform: linux-x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
@@ -51,11 +53,18 @@ jobs:
           dist/WorkshopTranslator.app/Contents/MacOS/WorkshopTranslator --self-test
           codesign --verify --deep --strict dist/WorkshopTranslator.app
           file dist/WorkshopTranslator.app/Contents/MacOS/WorkshopTranslator
+      - name: Build and verify Linux
+        if: runner.os == 'Linux'
+        run: |
+          python -m PyInstaller --clean --noconfirm packaging/WorkshopTranslator.spec
+          ./dist/WorkshopTranslator/WorkshopTranslator --self-test
+          python packaging/build_release.py --data-dir build/empty-release-data
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}
           path: |
             dist/WorkshopTranslator-Windows.zip
+            dist/WorkshopTranslator-Linux.zip
             dist/WorkshopTranslator-macOS-*.zip
           if-no-files-found: error
           retention-days: 14

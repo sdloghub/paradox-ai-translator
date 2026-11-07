@@ -26,11 +26,12 @@ def build_release(destination=None, data_dir=None, executable=None):
     if os.name == 'nt' and not saved.is_dir():
         saved = Path(os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'WorkshopTranslator/app_data'
     data_dir = Path(data_dir or saved).resolve()
-    destination = Path(destination or ROOT / 'dist/WorkshopTranslator-Windows.zip')
-    preferred = ROOT / 'dist/WorkshopTranslator/WorkshopTranslator.exe'
-    executable = Path(executable or (preferred if preferred.is_file() else ROOT / 'dist/WorkshopTranslator.exe'))
+    exe_name = 'WorkshopTranslator.exe' if os.name == 'nt' else 'WorkshopTranslator'
+    destination = Path(destination or (ROOT / ('dist/WorkshopTranslator-Windows.zip' if os.name == 'nt' else 'dist/WorkshopTranslator-Linux.zip')))
+    preferred = ROOT / 'dist/WorkshopTranslator' / exe_name
+    executable = Path(executable or (preferred if preferred.is_file() else ROOT / f'dist/{exe_name}'))
     if not executable.is_file():
-        raise FileNotFoundError('请先构建 Windows EXE')
+        raise FileNotFoundError(f'请先构建可执行文件 ({exe_name})')
     config = dict(workshop_app.DEFAULT_CONFIG)
     if (data_dir / 'config.json').is_file():
         config.update(json.loads((data_dir / 'config.json').read_text(encoding='utf-8')))
@@ -49,15 +50,15 @@ def build_release(destination=None, data_dir=None, executable=None):
         finally:
             connection.close()
     files = ['workshop_app.py', 'paradox.py', 'request.py', 'glossary.py', 'translation_cache.py', 'entry_browser.py', 'entry_browser_ui.js', 'browser_translator.js', 'browser_translator.ts', 'aggregate_export.py', 'mod_export.py',
-             'server_sessions.py', 'server_workshop.py', 'server_upload.py', 'server_codex.py', 'server_terminal.py', 'server_ui.js', 'tutorial_ui.js', 'localization.py', 'localization_ui.js', 'ui_languages.json', 'workshop_ui.html', 'rules.json', 'requirements.txt', 'introduction.md', 'README.md', 'start_windows.bat', 'setup_mac.command']
-    files += [str(p.relative_to(ROOT)) for folder in ('vendor', 'assets', 'packaging')
+             'server_sessions.py', 'server_workshop.py', 'server_upload.py', 'server_codex.py', 'server_terminal.py', 'server_ui.js', 'tutorial_ui.js', 'localization.py', 'localization_ui.js', 'ui_languages.json', 'workshop_ui.html', 'rules.json', 'requirements.txt', 'introduction.md', 'README.md', 'start_windows.bat', 'setup_mac.command', 'run_linux.sh', 'run_windows.bat']
+    files += [str(p.relative_to(ROOT)) for folder in ('vendor', 'assets', 'packaging', 'tutorials')
               for p in (ROOT / folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts]
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix('.zip.tmp')
     try:
         with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
             prefix = 'WorkshopTranslator/'
-            archive.write(executable, prefix + 'WorkshopTranslator.exe')
+            archive.write(executable, prefix + exe_name)
             support = executable.parent / '_internal'
             if support.is_dir():
                 for dependency in support.rglob('*'):
@@ -67,7 +68,7 @@ def build_release(destination=None, data_dir=None, executable=None):
                 archive.write(ROOT / name, prefix + name)
             for name, payload in [('config.json', config), ('providers.json', profiles), ('completed.json', completed)]:
                 archive.writestr(prefix + name, json.dumps(sanitized(payload), ensure_ascii=False, indent=2))
-            archive.writestr(prefix + 'SHA256SUMS.txt', hashlib.sha256(executable.read_bytes()).hexdigest() + '  WorkshopTranslator.exe\n')
+            archive.writestr(prefix + 'SHA256SUMS.txt', hashlib.sha256(executable.read_bytes()).hexdigest() + f'  {exe_name}\n')
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)
